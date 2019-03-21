@@ -1,0 +1,5 @@
+{
+    "go.toolsGopath": "${workspaceFolder}/lib",
+    "go.gopath": "${workspaceFolder}",
+    "editor.formatOnSave": true
+}
