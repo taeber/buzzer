@@ -68,6 +68,10 @@ func (server *Server) Post(username, message string) (MessageID, error) {
 
 // Follow adds followee to follower's list of followers.
 func (server *Server) Follow(followee, follower string) error {
+	if followee == follower {
+		return errors.New("Follower cannot follow themself")
+	}
+
 	ufollowee, followeeExists := server.users[followee]
 	if !followeeExists {
 		return errors.New("Unknown user: " + followee)
@@ -86,6 +90,10 @@ func (server *Server) Follow(followee, follower string) error {
 
 // Unfollow removes followee from follower's list of followers.
 func (server *Server) Unfollow(followee, follower string) error {
+	if followee == follower {
+		return errors.New("Follower is not following themself")
+	}
+
 	ufollowee, followeeExists := server.users[followee]
 	if !followeeExists {
 		return errors.New("Unknown user: " + followee)

@@ -4,12 +4,21 @@ import (
 	"bufio"
 	"buzzer"
 	"fmt"
+	"math/rand"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 )
+
+const numActors = 2
 
 var srv *buzzer.Server
 
+// There are two primary modes: interactive and non-interactive. Interactive
+// allows the user to test the implementation of functions one at a time. The
+// non-interactive mode starts a number of autonomous actors who continuously
+// make random choices about what to do.
 func main() {
 	srv = buzzer.NewServer()
 
@@ -18,25 +27,44 @@ func main() {
 		return
 	}
 
-	username := "taeber"
-	password := "rapczak"
-	srv.Register(username, password)
-	srv.Register("bob", "ross")
-	// srv.Login(username, password)
-	srv.Post(username, "Hello, @world!")
-	srv.Post(username, "Anyone from #cop5618sp19?")
-	srv.Post(username, "@bob u there?")
-	srv.Follow("taeber", "bob")
-	srv.Post("bob", "Happy Trees")
-
-	fmt.Println("BuzzFeed")
-	for _, msg := range srv.Messages("taeber") {
-		fmt.Printf(" %-10d\t%s\n", msg.ID, msg.Text)
+	for i := 0; i < numActors; i++ {
+		go actor("user" + strconv.Itoa(i))
 	}
 
-	fmt.Println("#cop5618sp19")
-	for _, msg := range srv.Tagged("cop5618sp19") {
-		fmt.Printf(" %-10d\t%s\n", msg.ID, msg.Text)
+	select {} // Waits forever.
+}
+
+func actor(name string) {
+	if err := srv.Register(name, "PWs aren't used currently"); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return
+	}
+
+	fmt.Println(name, ": registered.")
+	for {
+		choice := rand.Intn(3)
+		switch choice {
+		case 0:
+			msg := fmt.Sprintf("I picked a random number: %d!", rand.Int())
+			if msgID, err := srv.Post(name, msg); err == nil {
+				fmt.Printf("%s: posted message %d: %s\n", name, msgID, msg)
+			}
+
+		case 1:
+			other := fmt.Sprintf("user%d", rand.Intn(numActors))
+			if err := srv.Follow(name, other); err == nil {
+				fmt.Printf("%s: started following %s\n", name, other)
+			}
+
+		case 2:
+			other := fmt.Sprintf("user%d", rand.Intn(numActors))
+			if err := srv.Unfollow(name, other); err == nil {
+				fmt.Printf("%s: stopped following %s\n", name, other)
+			}
+
+		default:
+			time.Sleep(time.Duration(rand.Intn(500)) * time.Millisecond)
+		}
 	}
 }
 
