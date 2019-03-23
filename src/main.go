@@ -13,14 +13,14 @@ import (
 
 const numActors = 2
 
-var srv *buzzer.Server
+var srv buzzer.Server
 
 // There are two primary modes: interactive and non-interactive. Interactive
 // allows the user to test the implementation of functions one at a time. The
 // non-interactive mode starts a number of autonomous actors who continuously
 // make random choices about what to do.
 func main() {
-	srv = buzzer.NewServer()
+	srv = buzzer.StartServer()
 
 	if len(os.Args) > 1 && os.Args[1] == "-i" {
 		shell()

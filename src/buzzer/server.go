@@ -30,22 +30,197 @@ type userSet = map[*User]bool
 // kernel of sorts that is wrapped by a protocol-specific handler, such as one
 // for WebSockets. Specifically, authorization is assumed; no security checks
 // are performed by these functions.
-type Server struct {
+type Server interface {
+	Post(username, message string) (MessageID, error)
+	Follow(followee, follower string) error
+	Unfollow(followee, follower string) error
+	Messages(username string) []Message
+	Tagged(tag string) []Message
+
+	Register(username, password string) error
+	Login(username, password string) error
+	Logout(username string)
+}
+
+// StartServer properly initializes, starts, and returns a new Server.
+func StartServer() Server {
+	actual := newBasicServer()
+	server := newConcServer(actual)
+	go server.process()
+	return server
+}
+
+type concServer struct {
+	actual                                                            *basicServer
+	post, follow, unfollow, messages, tagged, register, login, logout chan request
+	shutdown                                                          chan bool
+}
+
+func newConcServer(actual *basicServer) *concServer {
+	return &concServer{
+		actual:   actual,
+		post:     make(chan request, 100),
+		follow:   make(chan request, 100),
+		unfollow: make(chan request, 100),
+		messages: make(chan request, 100),
+		tagged:   make(chan request, 100),
+		register: make(chan request, 100),
+		login:    make(chan request, 100),
+		logout:   make(chan request, 100),
+		shutdown: make(chan bool),
+	}
+}
+
+type response struct {
+	data interface{}
+	error
+}
+
+type request struct {
+	args [2]string
+	resp chan response
+}
+
+// process checks for a request in on any of the channels then forwards it to
+// the serial version of the Server. Responses are given asynchronously, using
+// a goroutine, to prevent blocking. This method ensures safe, concurrent
+// access to the underlying data.
+func (server *concServer) process() {
+	for {
+		select {
+		case req := <-server.post:
+			msgID, err := server.actual.Post(req.args[0], req.args[1])
+			go respond(&req, response{data: msgID, error: err})
+
+		case req := <-server.follow:
+			err := server.actual.Follow(req.args[0], req.args[1])
+			go respond(&req, response{error: err})
+
+		case req := <-server.unfollow:
+			err := server.actual.Unfollow(req.args[0], req.args[1])
+			go respond(&req, response{error: err})
+
+		case req := <-server.unfollow:
+			err := server.actual.Unfollow(req.args[0], req.args[1])
+			go respond(&req, response{error: err})
+
+		case req := <-server.messages:
+			msgs := server.actual.Messages(req.args[0])
+			go respond(&req, response{data: msgs})
+
+		case req := <-server.tagged:
+			msgs := server.actual.Tagged(req.args[0])
+			go respond(&req, response{data: msgs})
+
+		case req := <-server.register:
+			err := server.actual.Register(req.args[0], req.args[1])
+			go respond(&req, response{error: err})
+
+		case req := <-server.login:
+			err := server.actual.Login(req.args[0], req.args[1])
+			go respond(&req, response{error: err})
+
+		case req := <-server.logout:
+			server.actual.Logout(req.args[0])
+
+		case <-server.shutdown:
+			//TODO: what happens to items in the buffered channel? Do I need to empty them out and close all channels?
+			return
+
+		default:
+			continue
+		}
+	}
+}
+
+func respond(req *request, res response) {
+	req.resp <- res
+}
+
+func (server *concServer) Post(username, message string) (MessageID, error) {
+	resp := make(chan response)
+	server.post <- request{
+		args: [2]string{username, message},
+		resp: resp,
+	}
+	reply := <-resp
+	return reply.data.(MessageID), reply.error
+}
+
+func (server *concServer) Follow(followee, follower string) error {
+	resp := make(chan response)
+	server.follow <- request{
+		args: [2]string{followee, follower},
+		resp: resp,
+	}
+	reply := <-resp
+	return reply.error
+}
+
+func (server *concServer) Unfollow(followee, follower string) error {
+	resp := make(chan response)
+	server.unfollow <- request{
+		args: [2]string{followee, follower},
+		resp: resp,
+	}
+	reply := <-resp
+	return reply.error
+}
+
+func (server *concServer) Messages(username string) []Message {
+	resp := make(chan response)
+	server.messages <- request{
+		args: [2]string{username},
+		resp: resp,
+	}
+	reply := <-resp
+	return reply.data.([]Message)
+}
+
+func (server *concServer) Tagged(tag string) []Message {
+	resp := make(chan response)
+	server.messages <- request{
+		args: [2]string{tag},
+		resp: resp,
+	}
+	reply := <-resp
+	return reply.data.([]Message)
+}
+
+func (server *concServer) Register(username, password string) error {
+	resp := make(chan response)
+	server.register <- request{
+		args: [2]string{username, password},
+		resp: resp,
+	}
+	reply := <-resp
+	return reply.error
+}
+
+func (*concServer) Login(username, password string) error {
+	panic("Unimplemented")
+}
+
+func (*concServer) Logout(username string) {
+	panic("Unimplemented")
+}
+
+// basicServer is a implementation of Server that can only be used serially.
+type basicServer struct {
 	lastID   MessageID
 	messages map[MessageID]Message
 	users    map[string]*User
 }
 
-// NewServer properly initializes and returns a new Server.
-func NewServer() *Server {
-	return &Server{
+func newBasicServer() *basicServer {
+	return &basicServer{
 		messages: make(map[MessageID]Message),
 		users:    make(map[string]*User),
 	}
 }
 
 // Post parses any mentions or tags then adds message to the list of messages.
-func (server *Server) Post(username, message string) (MessageID, error) {
+func (server *basicServer) Post(username, message string) (MessageID, error) {
 	user, ok := server.users[username]
 	if !ok {
 		return 0, errors.New("Unknown user")
@@ -67,7 +242,7 @@ func (server *Server) Post(username, message string) (MessageID, error) {
 }
 
 // Follow adds followee to follower's list of followers.
-func (server *Server) Follow(followee, follower string) error {
+func (server *basicServer) Follow(followee, follower string) error {
 	if followee == follower {
 		return errors.New("Follower cannot follow themself")
 	}
@@ -89,7 +264,7 @@ func (server *Server) Follow(followee, follower string) error {
 }
 
 // Unfollow removes followee from follower's list of followers.
-func (server *Server) Unfollow(followee, follower string) error {
+func (server *basicServer) Unfollow(followee, follower string) error {
 	if followee == follower {
 		return errors.New("Follower is not following themself")
 	}
@@ -112,7 +287,7 @@ func (server *Server) Unfollow(followee, follower string) error {
 
 // Messages retrieves all posts made by a user and any posts in which username
 // is mentioned using "@username".
-func (server *Server) Messages(username string) []Message {
+func (server *basicServer) Messages(username string) []Message {
 	var messages []Message
 
 	user, ok := server.users[username]
@@ -130,7 +305,7 @@ func (server *Server) Messages(username string) []Message {
 }
 
 // Tagged retrieves all messages containing "#tag".
-func (server *Server) Tagged(tag string) []Message {
+func (server *basicServer) Tagged(tag string) []Message {
 	var messages []Message
 
 	for _, msg := range server.messages {
@@ -144,7 +319,7 @@ func (server *Server) Tagged(tag string) []Message {
 
 // Register checks that the username is available then files the username and
 // password.
-func (server *Server) Register(username, password string) error {
+func (server *basicServer) Register(username, password string) error {
 	if len(password) == 0 {
 		return errors.New("Invalid password")
 	}
@@ -165,12 +340,12 @@ func (server *Server) Register(username, password string) error {
 }
 
 // Login verify the username and password with their known credentials.
-func (*Server) Login(username, password string) error {
+func (*basicServer) Login(username, password string) error {
 	panic("Unimplemented")
 }
 
 // Logout removes the username from the list of active clients; no further
 // messages will be sent.
-func (*Server) Logout(username string) {
+func (*basicServer) Logout(username string) {
 	panic("Unimplemented")
 }

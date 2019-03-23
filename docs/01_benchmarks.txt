@@ -1,0 +1,23 @@
+$ GOPATH=$PWD go test -benchmem -run=^$ buzzer -bench .
+goos: linux
+goarch: amd64
+pkg: buzzer
+BenchmarkBasicServerPost-4   	 3000000	       394 ns/op	     137 B/op	       0 allocs/op
+BenchmarkConcServerPost-4    	   20000	     69059 ns/op	     310 B/op	       3 allocs/op
+PASS
+ok  	buzzer	3.782s
+
+
+
+First, I have to point out that the Go team has done a wonderful thing here
+by not only including a testing library, but integrating a test runner, code
+coverage tool, and benchmarker into the tools suite.
+
+Second, it looks like the overhead of using channels is quite large. Where
+posting using the non-concurrent server takes 394 ns, using the channels-based
+server takes 69059 ns on average!
+
+I suspect, however, that the network latency will be more of a bottleneck than
+any of the on-server operations. In other words, the incurred overhead will be
+neglible to the end users.
+
