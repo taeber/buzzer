@@ -11,6 +11,7 @@ package buzzer
 import (
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/gorilla/websocket"
 )
@@ -18,24 +19,42 @@ import (
 var backend Server
 var upgrader = websocket.Upgrader{} // use default options
 
-func wsConnect(w http.ResponseWriter, r *http.Request) {
+func socket(w http.ResponseWriter, r *http.Request) {
 	c, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Print("upgrade:", err)
 		return
 	}
 	defer c.Close()
+
 	for {
 		mt, message, err := c.ReadMessage()
+
 		if err != nil {
 			log.Println("read:", err)
 			break
 		}
+
+		if mt != websocket.TextMessage {
+			log.Println("discarding received binary message")
+			continue
+		}
+
 		log.Printf("recv: %s", message)
-		err = c.WriteMessage(mt, message)
-		if err != nil {
-			log.Println("write:", err)
-			break
+
+		parts := strings.Split(string(message), " ")
+		switch parts[0] {
+		case "register":
+			var err error
+			if regError := backend.Register(parts[1], parts[2]); regError == nil {
+				err = c.WriteMessage(websocket.TextMessage, []byte("OK"))
+			} else {
+				err = c.WriteMessage(websocket.TextMessage, []byte(regError.Error()))
+			}
+			if err != nil {
+				log.Println("write:", err)
+				break
+			}
 		}
 	}
 }
@@ -51,7 +70,7 @@ func StartWebServer(server Server, endpoint, static string) {
 
 	log.SetFlags(0)
 	// log.Print(static)
-	http.HandleFunc("/ws", wsConnect)
+	http.HandleFunc("/ws", socket)
 	http.Handle("/static/", http.StripPrefix("/static", http.FileServer(http.Dir(static))))
 	http.Handle("/", http.RedirectHandler("/static/", http.StatusMovedPermanently))
 	log.Fatal(http.ListenAndServe(endpoint, nil))

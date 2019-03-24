@@ -153,9 +153,19 @@ class BuzzerWebView extends React.Component {
             this.setState({ client })
         }
 
-        const response = await client.Register(creds.username, creds.password)
-        console.log(response)
-        this.setState({ loginFormDisabled: false })
+        try {
+            await client.Register(creds.username, creds.password)
+            this.setState({
+                loggedIn: true,
+                username: creds.username,
+                password: creds.password,
+                loginFormDisabled: false
+            })
+        } catch (err) {
+            console.error(err)
+            this.setState({ loginFormDisabled: false })
+            alert(`Error! ${err}`)
+        }
     }
 
     /**
@@ -184,13 +194,24 @@ function makeBuzzerClient(server) {
         const ws = new WebSocket(server)
         const client = {
             ws,
-            async Register(username, password) {
-                ws.send(["register", username, password].join(" "))
+            Register(username, password) {
+                return new Promise((resolve, reject) => {
+                    const response = (e) => {
+                        ws.removeEventListener("message", response)
+                        if (e.data === "OK") {
+                            resolve()
+                        } else {
+                            reject(e.data)
+                        }
+                    }
+                    ws.addEventListener("message", response)
+                    ws.send(["register", username, password].join(" "))
+                })
             },
         }
 
         ws.onclose = () => console.log("BuzzerClient: closed")
-        ws.onmessage = (e) => console.log("BuzzerClient: recv: ", e.data)
+        ws.onmessage = (e) => console.log("BuzzerClient: recv:", e.data)
         ws.onopen = () => resolve(client)
     })
 }
