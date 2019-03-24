@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"buzzer"
+	"flag"
 	"fmt"
 	"math/rand"
 	"os"
@@ -15,23 +16,32 @@ const numActors = 2
 
 var srv buzzer.Server
 
+var endpoint = flag.String("addr", "0.0.0.0:8080", "http service address")
+var interactive = flag.Bool("client", false, "Run in client/interactive mode")
+var testMode = flag.Bool("test", false, "Run concurrency test")
+
 // There are two primary modes: interactive and non-interactive. Interactive
 // allows the user to test the implementation of functions one at a time. The
 // non-interactive mode starts a number of autonomous actors who continuously
 // make random choices about what to do.
 func main() {
 	srv = buzzer.StartServer()
+	flag.Parse()
 
-	if len(os.Args) > 1 && os.Args[1] == "-i" {
+	if *interactive {
 		shell()
 		return
 	}
 
-	for i := 0; i < numActors; i++ {
-		go actor("user" + strconv.Itoa(i))
+	if *testMode {
+		for i := 0; i < numActors; i++ {
+			go actor("user" + strconv.Itoa(i))
+		}
+		select {} // Waits forever.
+		return
 	}
 
-	select {} // Waits forever.
+	buzzer.StartWebServer(srv, *endpoint, flag.Arg(0))
 }
 
 func actor(name string) {

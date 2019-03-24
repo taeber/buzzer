@@ -9,6 +9,7 @@ class BuzzerWebView extends React.Component {
         super(props)
 
         this.state = {
+            client: null,
             loggedIn: false,
             loginFormDisabled: false,
             username: "",
@@ -22,15 +23,22 @@ class BuzzerWebView extends React.Component {
         this.handleLogin = this.handleLogin.bind(this)
         this.handleLogout = this.handleLogout.bind(this)
         this.handlePost = this.handlePost.bind(this)
+        this.handleRegister = this.handleRegister.bind(this)
         this.handleSearch = this.handleSearch.bind(this)
     }
 
     render() {
-        const { handleLogin, handleLogout, handlePost, handleSearch } = this
+        const { handleLogin, handleLogout, handlePost, handleRegister, handleSearch } = this
         const { loggedIn, loginFormDisabled, username, messages } = this.state
 
         if (!loggedIn) {
-            return <LoginForm disabled={loginFormDisabled} onSubmit={handleLogin} />
+            return (
+                <LoginForm
+                    disabled={loginFormDisabled}
+                    onRegister={handleRegister}
+                    onSubmit={handleLogin}
+                />
+            )
         }
 
         const hero = (
@@ -128,6 +136,31 @@ class BuzzerWebView extends React.Component {
     /**
      * @param {Event} event
      */
+    async handleRegister(event) {
+        event.preventDefault()
+
+        let { client } = this.state
+
+        this.setState({ loginFormDisabled: true })
+
+        const creds = {
+            username: document.getElementsByName("username")[0].value,
+            password: document.getElementsByName("password")[0].value,
+        }
+
+        if (!client) {
+            client = await makeBuzzerClient(this.props.server)
+            this.setState({ client })
+        }
+
+        const response = await client.Register(creds.username, creds.password)
+        console.log(response)
+        this.setState({ loginFormDisabled: false })
+    }
+
+    /**
+     * @param {Event} event
+     */
     handleSearch(event) {
         event.preventDefault()
         const query = document.getElementsByName("query")[0].value
@@ -146,6 +179,22 @@ class BuzzerWebView extends React.Component {
     }
 }
 
+function makeBuzzerClient(server) {
+    return new Promise((resolve) => {
+        const ws = new WebSocket(server)
+        const client = {
+            ws,
+            async Register(username, password) {
+                ws.send(["register", username, password].join(" "))
+            },
+        }
+
+        ws.onclose = () => console.log("BuzzerClient: closed")
+        ws.onmessage = (e) => console.log("BuzzerClient: recv: ", e.data)
+        ws.onopen = () => resolve(client)
+    })
+}
+
 const LoginForm = (props) => (
     <form className="LoginForm" onSubmit={props.onSubmit}>
         <input name="username" autoComplete="username" placeholder="Username" />
@@ -153,9 +202,13 @@ const LoginForm = (props) => (
         <button type="submit" disabled={props.disabled}>{!props.disabled ? "Log In" : "..."}</button>
         <p className="center">New to Buzzer?</p>
         <p>
-            Fill in your desired username and password to sign up.
+            Fill in your desired username and password then tap
+            <strong><a href="#" onClick={props.onRegister}>register</a></strong>.
         </p>
     </form>
 )
 
-ReactDOM.render(<BuzzerWebView />, document.getElementById("app"))
+ReactDOM.render(
+    <BuzzerWebView server="ws://localhost:8080/ws" />,
+    document.getElementById("app")
+)
