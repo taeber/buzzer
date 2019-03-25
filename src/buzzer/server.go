@@ -126,9 +126,6 @@ func (server *concServer) process() {
 		case <-server.shutdown:
 			//TODO: what happens to items in the buffered channel? Do I need to empty them out and close all channels?
 			return
-
-		default:
-			continue
 		}
 	}
 }
