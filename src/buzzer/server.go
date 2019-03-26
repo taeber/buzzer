@@ -2,6 +2,7 @@ package buzzer
 
 import (
 	"errors"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -196,12 +197,18 @@ func (server *concServer) Register(username, password string) error {
 	return reply.error
 }
 
-func (*concServer) Login(username, password string) error {
-	panic("Unimplemented")
+func (server *concServer) Login(username, password string) error {
+	resp := make(chan response)
+	server.login <- request{
+		args: [2]string{username, password},
+		resp: resp,
+	}
+	reply := <-resp
+	return reply.error
 }
 
-func (*concServer) Logout(username string) {
-	panic("Unimplemented")
+func (*concServer) Logout(string) {
+	return // Nothing to do.
 }
 
 // basicServer is a implementation of Server that can only be used serially.
@@ -317,9 +324,15 @@ func (server *basicServer) Tagged(tag string) []Message {
 	return messages
 }
 
+var validUsernameRegex = regexp.MustCompile(`^\w+$`)
+
 // Register checks that the username is available then files the username and
 // password.
 func (server *basicServer) Register(username, password string) error {
+	if !validUsernameRegex.MatchString(username) {
+		return errors.New("Invalid username")
+	}
+
 	if len(password) == 0 {
 		return errors.New("Invalid password")
 	}
@@ -340,12 +353,25 @@ func (server *basicServer) Register(username, password string) error {
 }
 
 // Login verify the username and password with their known credentials.
-func (*basicServer) Login(username, password string) error {
-	panic("Unimplemented")
+func (server *basicServer) Login(username, password string) error {
+	if !validUsernameRegex.MatchString(username) {
+		return errors.New("Invalid username")
+	}
+
+	if len(password) == 0 {
+		return errors.New("Invalid password")
+	}
+
+	user, ok := server.users[username]
+	if !ok || user.password != password {
+		return errors.New("Invalid credentials")
+	}
+
+	return nil
 }
 
 // Logout removes the username from the list of active clients; no further
 // messages will be sent.
-func (*basicServer) Logout(username string) {
-	panic("Unimplemented")
+func (*basicServer) Logout(string) {
+	// TODO: Nothing to do. Maybe this should be moved elsewhere...
 }

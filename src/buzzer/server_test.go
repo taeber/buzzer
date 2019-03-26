@@ -2,6 +2,7 @@ package buzzer
 
 import (
 	"encoding/json"
+	"regexp"
 	"testing"
 	"time"
 )
@@ -29,6 +30,24 @@ func TestJSONMarshalling(t *testing.T) {
 	if expected != string(out) {
 		t.Errorf("JSON decoding failed:\n\t%s\n", out)
 	}
+}
+
+func TestRegex(t *testing.T) {
+	var validUsernameRegex = regexp.MustCompile(`^\w+$`)
+	acceptable := []string{"therealrobboss", "yogi_bear", "_", "__tom____"}
+	for _, name := range acceptable {
+		if !validUsernameRegex.MatchString(name) {
+			t.Errorf("Wrong regular expression; failed on:\t%s\n", name)
+		}
+	}
+
+	unacceptable := []string{"", "Space the final ", "...", "first.last"}
+	for _, name := range unacceptable {
+		if validUsernameRegex.MatchString(name) {
+			t.Errorf("Wrong regular expression; allowed:\t%s\n", name)
+		}
+	}
+
 }
 
 func BenchmarkBasicServerPost(b *testing.B) {
