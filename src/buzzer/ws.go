@@ -11,6 +11,7 @@ package buzzer
 import (
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/gorilla/websocket"
@@ -26,6 +27,8 @@ func socket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer c.Close()
+
+	var username string
 
 	for {
 		mt, message, err := c.ReadMessage()
@@ -49,6 +52,7 @@ func socket(w http.ResponseWriter, r *http.Request) {
 		switch parts[0] {
 		case "register":
 			if err := backend.Register(parts[1], parts[2]); err == nil {
+				username = parts[1]
 				reply = "OK"
 			} else {
 				reply = err.Error()
@@ -56,9 +60,22 @@ func socket(w http.ResponseWriter, r *http.Request) {
 
 		case "login":
 			if err := backend.Login(parts[1], parts[2]); err == nil {
+				username = parts[1]
 				reply = "OK"
 			} else {
 				reply = err.Error()
+			}
+
+		case "post":
+			if username == "" {
+				reply = "error Unauthorized"
+			} else {
+				msgID, err := backend.Post(username, strings.Join(parts[1:], " "))
+				if err == nil {
+					reply = "OK " + strconv.FormatUint(msgID, 10)
+				} else {
+					reply = err.Error()
+				}
 			}
 
 		default:

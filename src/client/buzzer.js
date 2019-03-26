@@ -17,6 +17,7 @@ class BuzzerWebView extends React.Component {
             username: "",
             password: "",
             messages: [],
+            status: "",
         }
 
         this.getClient = this.getClient.bind(this)
@@ -39,6 +40,7 @@ class BuzzerWebView extends React.Component {
 
         const {
             loggedIn, loginFormDisabled, username, messages, showRegistration,
+            status,
         } = this.state
 
         if (showRegistration) {
@@ -70,8 +72,19 @@ class BuzzerWebView extends React.Component {
 
         const post = (
             <form key="post" className="PostForm" onSubmit={handlePost}>
-                <input name="status" placeholder="What do you wanna say?" />
-                <button type="submit" name="post">Post</button>
+                <input
+                    name="status"
+                    placeholder="What do you wanna say?"
+                    value={status}
+                    onChange={e => this.setState({ status: e.target.value })}
+                />
+                <button
+                    name="post"
+                    type="submit"
+                    disabled={status === "" || loginFormDisabled}
+                >
+                    Post
+                </button>
             </form>
         )
 
@@ -182,8 +195,24 @@ class BuzzerWebView extends React.Component {
     /**
      * @param {Event} event
      */
-    handlePost(event) {
+    async handlePost(event) {
         event.preventDefault()
+
+        this.setState({ loginFormDisabled: true })
+
+        const client = await this.getClient()
+
+        const message = document.getElementsByName("status")[0].value
+
+        try {
+            await client.Post(message)
+            this.setState({ status: "" })
+        } catch (err) {
+            console.error(err)
+            alert(`Error! ${err}`)
+        } finally {
+            this.setState({ loginFormDisabled: false })
+        }
     }
 
     /**
@@ -257,6 +286,7 @@ function makeBuzzerClient(server) {
             ws,
             Register: register.bind(null, ws),
             Login: login.bind(null, ws),
+            Post: post.bind(null, ws),
         }
 
         ws.onclose = () => {
@@ -279,6 +309,20 @@ const login = (socket, username, password) => (
         }
         socket.addEventListener("message", response)
         socket.send(["login", username, password].join(" "))
+    })
+)
+
+const post = (socket, message) => (
+    new Promise((resolve, reject) => {
+        const response = (e) => {
+            socket.removeEventListener("message", response)
+            if (e.data.slice(0, 2) === "OK")
+                resolve()
+            else
+                reject(e.data)
+        }
+        socket.addEventListener("message", response)
+        socket.send(["post", message].join(" "))
     })
 )
 

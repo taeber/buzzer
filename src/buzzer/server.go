@@ -8,7 +8,7 @@ import (
 )
 
 // MessageID is a unique identifier for a posted message.
-type MessageID uint
+type MessageID = uint64
 
 // Message is a message posted by a user.
 type Message struct {
