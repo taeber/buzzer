@@ -259,7 +259,10 @@ function makeBuzzerClient(server) {
             Login: login.bind(null, ws),
         }
 
-        ws.onclose = () => console.log("BuzzerClient: closed")
+        ws.onclose = () => {
+            console.log("BuzzerClient: closed")
+            window.location = window.location
+        }
         ws.onmessage = (e) => console.log("BuzzerClient: recv:", e.data)
         ws.onopen = () => resolve(client)
     })
