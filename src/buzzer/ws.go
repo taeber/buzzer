@@ -43,20 +43,44 @@ func socket(w http.ResponseWriter, r *http.Request) {
 		log.Printf("recv: %s", message)
 
 		parts := strings.Split(string(message), " ")
+
+		var reply string
+
 		switch parts[0] {
 		case "register":
-			var err error
-			if regError := backend.Register(parts[1], parts[2]); regError == nil {
-				err = c.WriteMessage(websocket.TextMessage, []byte("OK"))
+			if err := backend.Register(parts[1], parts[2]); err == nil {
+				reply = "OK"
 			} else {
-				err = c.WriteMessage(websocket.TextMessage, []byte(regError.Error()))
+				reply = err.Error()
 			}
-			if err != nil {
-				log.Println("write:", err)
-				break
+
+		case "login":
+			if err := backend.Login(parts[1], parts[2]); err == nil {
+				reply = "OK"
+			} else {
+				reply = err.Error()
 			}
+
+		default:
+			reply = "error Bad Request"
+		}
+
+		if !write(c, reply) {
+			break
 		}
 	}
+}
+
+func write(socket *websocket.Conn, reply string) bool {
+	log.Println("write:", reply)
+	err := socket.WriteMessage(websocket.TextMessage, []byte(reply))
+
+	if err == nil {
+		return true
+	}
+
+	log.Println("write:", err)
+	return false
 }
 
 // StartWebServer creates a WebSocket-enabled, HTTP Server and listens at the

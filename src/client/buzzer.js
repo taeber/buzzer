@@ -19,6 +19,7 @@ class BuzzerWebView extends React.Component {
             messages: [],
         }
 
+        this.getClient = this.getClient.bind(this)
         this.getMessages = this.getMessages.bind(this)
         this.search = this.search.bind(this)
 
@@ -100,6 +101,15 @@ class BuzzerWebView extends React.Component {
         return [hero, post, search, messageList]
     }
 
+    async getClient() {
+        let { client } = this.state
+        if (!client) {
+            client = await makeBuzzerClient(this.props.server)
+            this.setState({ client })
+        }
+        return client
+    }
+
     async getMessages() {
         const response = await fetch("/").then(r => r.text())
         this.setState({
@@ -125,21 +135,32 @@ class BuzzerWebView extends React.Component {
      */
     async handleLogin(event) {
         event.preventDefault()
+
         this.setState({ loginFormDisabled: true })
+
+        const client = await this.getClient()
 
         const creds = {
             username: document.getElementsByName("username")[0].value,
             password: document.getElementsByName("password")[0].value,
         }
 
-        const response = await fetch("/").then(r => r.text())
-        this.setState({
-            username: creds.username,
-            password: creds.password,
-            loginFormDisabled: false,
-            loggedIn: true,
-            showRegistration: false,
-        }, this.getMessages)
+        try {
+            await client.Login(creds.username, creds.password)
+
+            this.setState({
+                username: creds.username,
+                password: creds.password,
+                loginFormDisabled: false,
+                loggedIn: true,
+                showRegistration: false,
+            }, this.getMessages)
+
+        } catch (err) {
+            console.error(err)
+            this.setState({ loginFormDisabled: false })
+            alert(`Error! ${err}`)
+        }
     }
 
     /**
@@ -147,9 +168,14 @@ class BuzzerWebView extends React.Component {
      */
     handleLogout(event) {
         event.preventDefault()
+
+        if (this.state.client && this.state.client.ws)
+            this.state.client.ws.close()
+
         this.setState({
             loggedIn: false,
             password: "",
+            client: null,
         })
     }
 
@@ -166,22 +192,18 @@ class BuzzerWebView extends React.Component {
     async handleRegister(event) {
         event.preventDefault()
 
-        let { client } = this.state
-
         this.setState({ loginFormDisabled: true })
+
+        const client = await this.getClient()
 
         const creds = {
             username: document.getElementsByName("username")[0].value,
             password: document.getElementsByName("password")[0].value,
         }
 
-        if (!client) {
-            client = await makeBuzzerClient(this.props.server)
-            this.setState({ client })
-        }
-
         try {
             await client.Register(creds.username, creds.password)
+
             this.setState({
                 loggedIn: true,
                 username: creds.username,
@@ -189,6 +211,7 @@ class BuzzerWebView extends React.Component {
                 loginFormDisabled: false,
                 showRegistration: false,
             }, this.getMessages)
+
         } catch (err) {
             console.error(err)
             this.setState({ loginFormDisabled: false })
@@ -233,6 +256,7 @@ function makeBuzzerClient(server) {
         const client = {
             ws,
             Register: register.bind(null, ws),
+            Login: login.bind(null, ws),
         }
 
         ws.onclose = () => console.log("BuzzerClient: closed")
@@ -240,6 +264,20 @@ function makeBuzzerClient(server) {
         ws.onopen = () => resolve(client)
     })
 }
+
+const login = (socket, username, password) => (
+    new Promise((resolve, reject) => {
+        const response = (e) => {
+            socket.removeEventListener("message", response)
+            if (e.data === "OK")
+                resolve()
+            else
+                reject(e.data)
+        }
+        socket.addEventListener("message", response)
+        socket.send(["login", username, password].join(" "))
+    })
+)
 
 const register = (socket, username, password) => (
     new Promise((resolve, reject) => {
@@ -254,7 +292,6 @@ const register = (socket, username, password) => (
         socket.send(["register", username, password].join(" "))
     })
 )
-
 
 const LoginForm = (props) => (
     <form className="LoginForm" onSubmit={props.onSubmit}>
