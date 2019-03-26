@@ -1,7 +1,8 @@
 if (false) {
     // This is just a trick to get Intellisense working in VS Code.
     let React = require("react"),
-        ReactDOM = require("react-dom")
+        ReactDOM = require("react-dom"),
+        moment = require("moment")
 }
 
 class BuzzerWebView extends React.Component {
@@ -12,6 +13,7 @@ class BuzzerWebView extends React.Component {
             client: null,
             loggedIn: false,
             loginFormDisabled: false,
+            showRegistration: false,
             username: "",
             password: "",
             messages: [],
@@ -25,18 +27,35 @@ class BuzzerWebView extends React.Component {
         this.handlePost = this.handlePost.bind(this)
         this.handleRegister = this.handleRegister.bind(this)
         this.handleSearch = this.handleSearch.bind(this)
+        this.handleToggleForms = this.handleToggleForms.bind(this)
     }
 
     render() {
-        const { handleLogin, handleLogout, handlePost, handleRegister, handleSearch } = this
-        const { loggedIn, loginFormDisabled, username, messages } = this.state
+        const {
+            handleLogin, handleLogout, handlePost, handleRegister,
+            handleSearch, handleToggleForms,
+        } = this
+
+        const {
+            loggedIn, loginFormDisabled, username, messages, showRegistration,
+        } = this.state
+
+        if (showRegistration) {
+            return (
+                <RegistrationForm
+                    disabled={loginFormDisabled}
+                    onSubmit={handleRegister}
+                    onCancel={handleToggleForms}
+                />
+            )
+        }
 
         if (!loggedIn) {
             return (
                 <LoginForm
                     disabled={loginFormDisabled}
-                    onRegister={handleRegister}
                     onSubmit={handleLogin}
+                    onCancel={handleToggleForms}
                 />
             )
         }
@@ -66,7 +85,12 @@ class BuzzerWebView extends React.Component {
             <ul key="messages" className="messages">
                 {messages.map(msg => (
                     <li className="message" key={msg.id}>
-                        <p className="poster">@{msg.poster}</p>
+                        <div className="poster">
+                            @{msg.poster}
+                            <span className="posted">
+                                {moment(msg.posted).fromNow()}
+                            </span>
+                        </div>
                         <p className="text">{msg.text}</p>
                     </li>
                 ))}
@@ -84,11 +108,13 @@ class BuzzerWebView extends React.Component {
                     id: 1,
                     poster: "therealbobross",
                     text: "Happy Trees Happy Trees!",
+                    posted: "2019-03-24T13:30:00-04:00",
                 },
                 {
                     id: 2,
                     poster: "therealbobross",
                     text: "This would be a good home for my little squirrels :)",
+                    posted: "2019-03-24T13:30:01-04:00",
                 }
             ]
         })
@@ -112,6 +138,7 @@ class BuzzerWebView extends React.Component {
             password: creds.password,
             loginFormDisabled: false,
             loggedIn: true,
+            showRegistration: false,
         }, this.getMessages)
     }
 
@@ -159,8 +186,9 @@ class BuzzerWebView extends React.Component {
                 loggedIn: true,
                 username: creds.username,
                 password: creds.password,
-                loginFormDisabled: false
-            })
+                loginFormDisabled: false,
+                showRegistration: false,
+            }, this.getMessages)
         } catch (err) {
             console.error(err)
             this.setState({ loginFormDisabled: false })
@@ -176,6 +204,16 @@ class BuzzerWebView extends React.Component {
         const query = document.getElementsByName("query")[0].value
 
         this.search(query)
+    }
+
+    /**
+     * @param {Event} event
+     */
+    handleToggleForms(event) {
+        event.preventDefault()
+        this.setState({
+            showRegistration: !this.state.showRegistration,
+        })
     }
 
     search(query) {
@@ -194,20 +232,7 @@ function makeBuzzerClient(server) {
         const ws = new WebSocket(server)
         const client = {
             ws,
-            Register(username, password) {
-                return new Promise((resolve, reject) => {
-                    const response = (e) => {
-                        ws.removeEventListener("message", response)
-                        if (e.data === "OK") {
-                            resolve()
-                        } else {
-                            reject(e.data)
-                        }
-                    }
-                    ws.addEventListener("message", response)
-                    ws.send(["register", username, password].join(" "))
-                })
-            },
+            Register: register.bind(null, ws),
         }
 
         ws.onclose = () => console.log("BuzzerClient: closed")
@@ -216,16 +241,41 @@ function makeBuzzerClient(server) {
     })
 }
 
+const register = (socket, username, password) => (
+    new Promise((resolve, reject) => {
+        const response = (e) => {
+            socket.removeEventListener("message", response)
+            if (e.data === "OK")
+                resolve()
+            else
+                reject(e.data)
+        }
+        socket.addEventListener("message", response)
+        socket.send(["register", username, password].join(" "))
+    })
+)
+
+
 const LoginForm = (props) => (
     <form className="LoginForm" onSubmit={props.onSubmit}>
         <input name="username" autoComplete="username" placeholder="Username" />
         <input name="password" type="password" autoComplete="current-password" placeholder="Password" />
         <button type="submit" disabled={props.disabled}>{!props.disabled ? "Log In" : "..."}</button>
-        <p className="center">New to Buzzer?</p>
-        <p>
-            Fill in your desired username and password then tap
-            <strong><a href="#" onClick={props.onRegister}>register</a></strong>.
+        <p className="center">
+            New to Buzzer? <a href="#" onClick={props.onCancel}>Sign up!</a>
         </p>
+    </form>
+)
+
+const RegistrationForm = (props) => (
+    <form className="LoginForm" onSubmit={props.onSubmit}>
+        <input name="username" autoComplete="username" placeholder="Username" />
+        <input name="password" type="password" autoComplete="current-password" placeholder="Password" />
+        <button type="submit" disabled={props.disabled}>{!props.disabled ? "Register" : "..."}</button>
+        <p className="center">
+            <a href="#" onClick={props.onCancel}>Cancel</a>
+        </p>
+
     </form>
 )
 

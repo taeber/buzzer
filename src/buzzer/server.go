@@ -3,6 +3,7 @@ package buzzer
 import (
 	"errors"
 	"strings"
+	"time"
 )
 
 // MessageID is a unique identifier for a posted message.
@@ -10,17 +11,18 @@ type MessageID uint
 
 // Message is a message posted by a user.
 type Message struct {
-	ID   MessageID
-	Text string
-	User *User
+	ID     MessageID `json:id`
+	Text   string    `json:text`
+	Poster *User     `json:poster`
+	Posted time.Time `json:posted`
 }
 
 // User is a person or bot that uses the service.
 type User struct {
-	Username  string
-	password  string
-	follows   userSet
-	followers userSet
+	Username  string  `json:username`
+	password  string  `json:-`
+	follows   userSet `json:-`
+	followers userSet `json:-`
 }
 
 // userSet is a set of unique users.
@@ -226,9 +228,10 @@ func (server *basicServer) Post(username, message string) (MessageID, error) {
 	server.lastID++
 
 	msg := Message{
-		ID:   server.lastID,
-		Text: message,
-		User: user,
+		ID:     server.lastID,
+		Text:   message,
+		Poster: user,
+		Posted: time.Now(),
 		// Mentions: parseMentions(message),
 		// Tags: parseTags(messag)
 	}
@@ -293,7 +296,7 @@ func (server *basicServer) Messages(username string) []Message {
 	}
 
 	for _, msg := range server.messages {
-		if msg.User.Username == user.Username {
+		if msg.Poster.Username == user.Username {
 			messages = append(messages, msg)
 		}
 	}

@@ -30,8 +30,9 @@ header img {
 }
 
 #app {
-    margin-top: 4em; /* 2 for h1 + 0.5*2 for header padding + 1 for more space */
+    margin: 4em auto; /* 2 for h1 + 0.5*2 for header padding + 1 for more space */
     width: 100%;
+    max-width: 768px;
 }
 
 #app > form,
@@ -55,6 +56,12 @@ li.message {
 li.message .poster {
     margin: 0;
     color: rebeccapurple;
+    font-size: smaller;
+}
+
+li.message .posted {
+    float: right;
+    color: gray;
     font-size: smaller;
 }
 

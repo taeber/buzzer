@@ -1,7 +1,9 @@
 package buzzer
 
 import (
+	"encoding/json"
 	"testing"
+	"time"
 )
 
 func TestPostByUnknownUserFails(t *testing.T) {
@@ -9,7 +11,23 @@ func TestPostByUnknownUserFails(t *testing.T) {
 
 	msgID, err := srv.Post("taeber", "Buzz! buzz!")
 	if msgID != 0 || err == nil || err.Error() != "Unknown user" {
-		t.Errorf("Post() is not validating username")
+		t.Error("Post() is not validating username")
+	}
+}
+
+func TestJSONMarshalling(t *testing.T) {
+	user := User{"taeber", "secret", nil, nil}
+	msg := Message{
+		ID:     42,
+		Text:   "I do!",
+		Poster: &user,
+		Posted: time.Date(2012, 06, 23, 13, 30, 0, 0, time.FixedZone("EST", -4*60*60)),
+	}
+
+	out, _ := json.Marshal(msg)
+	expected := `{"ID":42,"Text":"I do!","Poster":{"Username":"taeber"},"Posted":"2012-06-23T13:30:00-04:00"}`
+	if expected != string(out) {
+		t.Errorf("JSON decoding failed:\n\t%s\n", out)
 	}
 }
 
