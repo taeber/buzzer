@@ -12,18 +12,18 @@ type MessageID = uint64
 
 // Message is a message posted by a user.
 type Message struct {
-	ID     MessageID `json:id`
-	Text   string    `json:text`
-	Poster *User     `json:poster`
-	Posted time.Time `json:posted`
+	ID     MessageID `json:"id"`
+	Text   string    `json:"text"`
+	Poster *User     `json:"poster"`
+	Posted time.Time `json:"posted"`
 }
 
 // User is a person or bot that uses the service.
 type User struct {
-	Username  string  `json:username`
-	password  string  `json:-`
-	follows   userSet `json:-`
-	followers userSet `json:-`
+	Username  string `json:"username"`
+	password  string
+	follows   userSet
+	followers userSet
 }
 
 // userSet is a set of unique users.
@@ -41,8 +41,14 @@ type Server interface {
 	Tagged(tag string) []Message
 
 	Register(username, password string) error
-	Login(username, password string) error
-	Logout(username string)
+	Login(username, password string, client Client) error
+	Logout(username string, client Client)
+}
+
+// Client implements sending a message from the server to the client and
+// ensures it is done in a thread-safe way.
+type Client interface {
+	Process(msg Message)
 }
 
 // StartServer properly initializes, starts, and returns a new Server.
@@ -80,8 +86,9 @@ type response struct {
 }
 
 type request struct {
-	args [2]string
-	resp chan response
+	args   [2]string
+	client Client
+	resp   chan response
 }
 
 // process checks for a request in on any of the channels then forwards it to
@@ -120,11 +127,11 @@ func (server *concServer) process() {
 			go respond(&req, response{error: err})
 
 		case req := <-server.login:
-			err := server.actual.Login(req.args[0], req.args[1])
+			err := server.actual.Login(req.args[0], req.args[1], req.client)
 			go respond(&req, response{error: err})
 
 		case req := <-server.logout:
-			server.actual.Logout(req.args[0])
+			server.actual.Logout(req.args[0], req.client)
 
 		case <-server.shutdown:
 			//TODO: what happens to items in the buffered channel? Do I need to empty them out and close all channels?
@@ -197,18 +204,22 @@ func (server *concServer) Register(username, password string) error {
 	return reply.error
 }
 
-func (server *concServer) Login(username, password string) error {
+func (server *concServer) Login(username, password string, client Client) error {
 	resp := make(chan response)
 	server.login <- request{
-		args: [2]string{username, password},
-		resp: resp,
+		args:   [2]string{username, password},
+		client: client,
+		resp:   resp,
 	}
 	reply := <-resp
 	return reply.error
 }
 
-func (*concServer) Logout(string) {
-	return // Nothing to do.
+func (server *concServer) Logout(username string, client Client) {
+	server.logout <- request{
+		args:   [2]string{username, ""},
+		client: client,
+	}
 }
 
 // basicServer is a implementation of Server that can only be used serially.
@@ -216,6 +227,7 @@ type basicServer struct {
 	lastID   MessageID
 	messages map[MessageID]Message
 	users    map[string]*User
+	clients  []Client
 }
 
 func newBasicServer() *basicServer {
@@ -244,6 +256,12 @@ func (server *basicServer) Post(username, message string) (MessageID, error) {
 	}
 
 	server.messages[msg.ID] = msg
+
+	go func(clients []Client) {
+		for _, client := range clients {
+			client.Process(msg)
+		}
+	}(server.clients)
 
 	return msg.ID, nil
 }
@@ -353,7 +371,7 @@ func (server *basicServer) Register(username, password string) error {
 }
 
 // Login verify the username and password with their known credentials.
-func (server *basicServer) Login(username, password string) error {
+func (server *basicServer) Login(username, password string, client Client) error {
 	if !validUsernameRegex.MatchString(username) {
 		return errors.New("Invalid username")
 	}
@@ -367,11 +385,26 @@ func (server *basicServer) Login(username, password string) error {
 		return errors.New("Invalid credentials")
 	}
 
+	server.clients = append(server.clients, client)
+
 	return nil
 }
 
 // Logout removes the username from the list of active clients; no further
 // messages will be sent.
-func (*basicServer) Logout(string) {
-	// TODO: Nothing to do. Maybe this should be moved elsewhere...
+func (server *basicServer) Logout(username string, client Client) {
+	_, ok := server.users[username]
+	if !ok {
+		return // User not found.
+	}
+
+	remaining := server.clients[:0]
+	for _, c := range server.clients {
+		if client == c {
+			continue
+		}
+		remaining = append(remaining, c)
+	}
+
+	server.clients = remaining
 }

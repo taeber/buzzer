@@ -26,7 +26,7 @@ func TestJSONMarshalling(t *testing.T) {
 	}
 
 	out, _ := json.Marshal(msg)
-	expected := `{"ID":42,"Text":"I do!","Poster":{"Username":"taeber"},"Posted":"2012-06-23T13:30:00-04:00"}`
+	expected := `{"id":42,"text":"I do!","poster":{"username":"taeber"},"posted":"2012-06-23T13:30:00-04:00"}`
 	if expected != string(out) {
 		t.Errorf("JSON decoding failed:\n\t%s\n", out)
 	}

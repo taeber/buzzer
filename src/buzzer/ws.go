@@ -4,23 +4,27 @@ package buzzer
 // https://github.com/gorilla/websocket/blob/master/examples/echo/server.go
 // under license from The Gorilla WebScoket Authors.
 
-// Copyright 2015 The Gorilla WebSocket Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 import (
+	"encoding/json"
 	"log"
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/gorilla/websocket"
 )
 
+type wsClient struct {
+	username string
+	socket   *websocket.Conn
+	lock     sync.Mutex
+}
+
 var backend Server
 var upgrader = websocket.Upgrader{} // use default options
 
-func socket(w http.ResponseWriter, r *http.Request) {
+func accept(w http.ResponseWriter, r *http.Request) {
 	c, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Print("upgrade:", err)
@@ -28,7 +32,9 @@ func socket(w http.ResponseWriter, r *http.Request) {
 	}
 	defer c.Close()
 
-	var username string
+	client := wsClient{
+		socket: c,
+	}
 
 	for {
 		mt, message, err := c.ReadMessage()
@@ -44,53 +50,70 @@ func socket(w http.ResponseWriter, r *http.Request) {
 		}
 
 		log.Printf("recv: %s", message)
+		reply := decodeAndExecute(&client, string(message))
 
-		parts := strings.Split(string(message), " ")
-
-		var reply string
-
-		switch parts[0] {
-		case "register":
-			if err := backend.Register(parts[1], parts[2]); err == nil {
-				username = parts[1]
-				reply = "OK"
-			} else {
-				reply = err.Error()
-			}
-
-		case "login":
-			if err := backend.Login(parts[1], parts[2]); err == nil {
-				username = parts[1]
-				reply = "OK"
-			} else {
-				reply = err.Error()
-			}
-
-		case "post":
-			if username == "" {
-				reply = "error Unauthorized"
-			} else {
-				msgID, err := backend.Post(username, strings.Join(parts[1:], " "))
-				if err == nil {
-					reply = "OK " + strconv.FormatUint(msgID, 10)
-				} else {
-					reply = err.Error()
-				}
-			}
-
-		default:
-			reply = "error Bad Request"
-		}
-
-		if !write(c, reply) {
+		if !client.write(reply) {
 			break
 		}
 	}
 }
 
-func write(socket *websocket.Conn, reply string) bool {
+func decodeAndExecute(client *wsClient, message string) string {
+	parts := strings.Split(message, " ")
+
+	switch parts[0] {
+	case "register":
+		if len(parts) < 3 {
+			return "error Bad Request"
+		}
+
+		err := backend.Register(parts[1], parts[2])
+		if err != nil {
+			return err.Error()
+		}
+
+		client.username = parts[1]
+		return "OK"
+
+	case "login":
+		if len(parts) < 3 {
+			return "error Bad Request"
+		}
+
+		err := backend.Login(parts[1], parts[2], client)
+		if err != nil {
+			return err.Error()
+		}
+
+		client.username = parts[1]
+		return "OK"
+
+	case "post":
+		if client.username == "" {
+			return "error Unauthorized"
+		}
+
+		if len(parts) < 2 {
+			return "error Bad Request"
+		}
+
+		msgID, err := backend.Post(client.username, strings.Join(parts[1:], " "))
+		if err != nil {
+			return err.Error()
+		}
+
+		return "OK " + strconv.FormatUint(msgID, 10)
+	}
+
+	return "error Bad Request"
+}
+
+func (client *wsClient) write(reply string) bool {
 	log.Println("write:", reply)
-	err := socket.WriteMessage(websocket.TextMessage, []byte(reply))
+
+	client.lock.Lock()
+	err := client.socket.WriteMessage(websocket.TextMessage, []byte(reply))
+	client.lock.Unlock()
 
 	if err == nil {
 		return true
@@ -98,6 +121,20 @@ func write(socket *websocket.Conn, reply string) bool {
 
 	log.Println("write:", err)
 	return false
+}
+
+func (client *wsClient) Process(msg Message) {
+	if msg.Poster.Username != client.username {
+		return
+	}
+
+	encoded, err := json.Marshal(msg)
+	if err != nil {
+		log.Println("failed to convert msg to JSON: ", msg.ID)
+		return
+	}
+
+	client.write("buzz " + string(encoded))
 }
 
 // StartWebServer creates a WebSocket-enabled, HTTP Server and listens at the
@@ -111,7 +148,7 @@ func StartWebServer(server Server, endpoint, static string) {
 
 	log.SetFlags(0)
 	// log.Print(static)
-	http.HandleFunc("/ws", socket)
+	http.HandleFunc("/ws", accept)
 	http.Handle("/static/", http.StripPrefix("/static", http.FileServer(http.Dir(static))))
 	http.Handle("/", http.RedirectHandler("/static/", http.StatusMovedPermanently))
 	log.Fatal(http.ListenAndServe(endpoint, nil))

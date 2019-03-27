@@ -13,7 +13,7 @@ class BuzzerWebView extends React.Component {
             client: null,
             loggedIn: false,
             loginFormDisabled: false,
-            showRegistration: false,
+            showRegistration: true,
             username: "",
             password: "",
             messages: [],
@@ -26,6 +26,7 @@ class BuzzerWebView extends React.Component {
 
         this.handleLogin = this.handleLogin.bind(this)
         this.handleLogout = this.handleLogout.bind(this)
+        this.handleMessage = this.handleMessage.bind(this)
         this.handlePost = this.handlePost.bind(this)
         this.handleRegister = this.handleRegister.bind(this)
         this.handleSearch = this.handleSearch.bind(this)
@@ -100,7 +101,7 @@ class BuzzerWebView extends React.Component {
                 {messages.map(msg => (
                     <li className="message" key={msg.id}>
                         <div className="poster">
-                            @{msg.poster}
+                            @{msg.poster.username}
                             <span className="posted">
                                 {moment(msg.posted).fromNow()}
                             </span>
@@ -117,25 +118,24 @@ class BuzzerWebView extends React.Component {
     async getClient() {
         let { client } = this.state
         if (!client) {
-            client = await makeBuzzerClient(this.props.server)
+            client = await makeBuzzerClient(this.props.server, this.handleMessage)
             this.setState({ client })
         }
         return client
     }
 
     async getMessages() {
-        const response = await fetch("/").then(r => r.text())
         this.setState({
             messages: [
                 {
-                    id: 1,
-                    poster: "therealbobross",
+                    id: -2,
+                    poster: { username: "therealbobross" },
                     text: "Happy Trees Happy Trees!",
                     posted: "2019-03-24T13:30:00-04:00",
                 },
                 {
-                    id: 2,
-                    poster: "therealbobross",
+                    id: -1,
+                    poster: { username: "therealbobross" },
                     text: "This would be a good home for my little squirrels :)",
                     posted: "2019-03-24T13:30:01-04:00",
                 }
@@ -192,6 +192,16 @@ class BuzzerWebView extends React.Component {
         })
     }
 
+    handleMessage(msg) {
+        if (msg.slice(0, 5) !== "buzz ")
+            return
+
+        const buzz = JSON.parse(msg.slice(5))
+        this.setState({
+            messages: this.state.messages.concat([buzz])
+        })
+    }
+
     /**
      * @param {Event} event
      */
@@ -232,6 +242,7 @@ class BuzzerWebView extends React.Component {
 
         try {
             await client.Register(creds.username, creds.password)
+            await client.Login(creds.username, creds.password)
 
             this.setState({
                 loggedIn: true,
@@ -240,7 +251,6 @@ class BuzzerWebView extends React.Component {
                 loginFormDisabled: false,
                 showRegistration: false,
             }, this.getMessages)
-
         } catch (err) {
             console.error(err)
             this.setState({ loginFormDisabled: false })
@@ -279,7 +289,7 @@ class BuzzerWebView extends React.Component {
     }
 }
 
-function makeBuzzerClient(server) {
+function makeBuzzerClient(server, msgHandler) {
     return new Promise((resolve) => {
         const ws = new WebSocket(server)
         const client = {
@@ -293,7 +303,10 @@ function makeBuzzerClient(server) {
             console.log("BuzzerClient: closed")
             window.location = window.location
         }
-        ws.onmessage = (e) => console.log("BuzzerClient: recv:", e.data)
+        ws.onmessage = (e) => {
+            console.log("BuzzerClient: recv:", e.data)
+            msgHandler(e.data)
+        }
         ws.onopen = () => resolve(client)
     })
 }
@@ -318,8 +331,9 @@ const post = (socket, message) => (
             socket.removeEventListener("message", response)
             if (e.data.slice(0, 2) === "OK")
                 resolve()
-            else
+            else if (e.data.slice(0, 6) === "error ")
                 reject(e.data)
+            // Otherwise we are looking at an unrelated message.
         }
         socket.addEventListener("message", response)
         socket.send(["post", message].join(" "))
@@ -357,7 +371,7 @@ const RegistrationForm = (props) => (
         <input name="password" type="password" autoComplete="current-password" placeholder="Password" />
         <button type="submit" disabled={props.disabled}>{!props.disabled ? "Register" : "..."}</button>
         <p className="center">
-            <a href="#" onClick={props.onCancel}>Cancel</a>
+            Already registered? <a href="#" onClick={props.onCancel}>Log in</a>
         </p>
 
     </form>
