@@ -299,15 +299,19 @@ function makeBuzzerClient(server, msgHandler) {
             Post: post.bind(null, ws),
         }
 
-        ws.onclose = () => {
+        client.ws.addEventListener("close", () => {
             console.log("BuzzerClient: closed")
-            window.location = window.location
-        }
-        ws.onmessage = (e) => {
+            alert("Lost connection to server")
+            // window.location = window.location
+        })
+        client.ws.addEventListener("message", (e) => {
             console.log("BuzzerClient: recv:", e.data)
             msgHandler(e.data)
-        }
-        ws.onopen = () => resolve(client)
+        })
+        client.ws.addEventListener("open", () => {
+            console.log("BuzzerClient: opened")
+            resolve(client)
+        })
     })
 }
 
@@ -377,7 +381,8 @@ const RegistrationForm = (props) => (
     </form>
 )
 
+const endpoint = `ws://${window.location.host}/ws`
 ReactDOM.render(
-    <BuzzerWebView server="ws://localhost:8080/ws" />,
+    <BuzzerWebView server={endpoint} />,
     document.getElementById("app")
 )
