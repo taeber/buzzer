@@ -18,6 +18,7 @@ class BuzzerWebView extends React.Component {
             password: "",
             messages: [],
             status: "",
+            compressed: false,
         }
 
         this.getClient = this.getClient.bind(this)
@@ -33,6 +34,13 @@ class BuzzerWebView extends React.Component {
         this.handleToggleForms = this.handleToggleForms.bind(this)
     }
 
+    componentDidMount() {
+        const banner = document.getElementById("banner")
+        banner.addEventListener("click", () => {
+            this.setState({ compressed: !this.state.compressed })
+        })
+    }
+
     render() {
         const {
             handleLogin, handleLogout, handlePost, handleRegister,
@@ -41,7 +49,7 @@ class BuzzerWebView extends React.Component {
 
         const {
             loggedIn, loginFormDisabled, username, messages, showRegistration,
-            status,
+            status, compressed,
         } = this.state
 
         if (showRegistration) {
@@ -63,6 +71,25 @@ class BuzzerWebView extends React.Component {
                 />
             )
         }
+
+        const messageList = (
+            <ul key="messages" className="messages">
+                {messages.map(msg => (
+                    <li className="message" key={msg.id}>
+                        <div className="poster">
+                            @{msg.poster.username}
+                            <span className="posted">
+                                {moment(msg.posted).fromNow()}
+                            </span>
+                        </div>
+                        <p className="text">{msg.text}</p>
+                    </li>
+                ))}
+            </ul>
+        )
+
+        if (compressed)
+            return messageList
 
         const hero = (
             <div key="hero" className="hero">
@@ -94,22 +121,6 @@ class BuzzerWebView extends React.Component {
                 <input name="query" placeholder="#tag or @username" />
                 <button type="submit" name="post">Search</button>
             </form>
-        )
-
-        const messageList = (
-            <ul key="messages" className="messages">
-                {messages.map(msg => (
-                    <li className="message" key={msg.id}>
-                        <div className="poster">
-                            @{msg.poster.username}
-                            <span className="posted">
-                                {moment(msg.posted).fromNow()}
-                            </span>
-                        </div>
-                        <p className="text">{msg.text}</p>
-                    </li>
-                ))}
-            </ul>
         )
 
         return [hero, post, search, messageList]

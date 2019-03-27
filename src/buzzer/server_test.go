@@ -47,7 +47,6 @@ func TestRegex(t *testing.T) {
 			t.Errorf("Wrong regular expression; allowed:\t%s\n", name)
 		}
 	}
-
 }
 
 func BenchmarkBasicServerPost(b *testing.B) {

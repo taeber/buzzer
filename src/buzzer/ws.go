@@ -125,7 +125,16 @@ func (client *wsClient) write(reply string) bool {
 
 func (client *wsClient) Process(msg Message) {
 	if msg.Poster.Username != client.username {
-		return
+		mentioned := false
+		for _, name := range msg.Mentions {
+			if name == client.username {
+				mentioned = true
+				break
+			}
+		}
+		if !mentioned {
+			return
+		}
 	}
 
 	encoded, err := json.Marshal(msg)

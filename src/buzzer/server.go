@@ -12,10 +12,11 @@ type MessageID = uint64
 
 // Message is a message posted by a user.
 type Message struct {
-	ID     MessageID `json:"id"`
-	Text   string    `json:"text"`
-	Poster *User     `json:"poster"`
-	Posted time.Time `json:"posted"`
+	ID       MessageID `json:"id"`
+	Text     string    `json:"text"`
+	Poster   *User     `json:"poster"`
+	Posted   time.Time `json:"posted"`
+	Mentions []string  `json:"-"`
 }
 
 // User is a person or bot that uses the service.
@@ -247,11 +248,11 @@ func (server *basicServer) Post(username, message string) (MessageID, error) {
 	server.lastID++
 
 	msg := Message{
-		ID:     server.lastID,
-		Text:   message,
-		Poster: user,
-		Posted: time.Now(),
-		// Mentions: parseMentions(message),
+		ID:       server.lastID,
+		Text:     message,
+		Poster:   user,
+		Posted:   time.Now(),
+		Mentions: parseMentions(message),
 		// Tags: parseTags(messag)
 	}
 
