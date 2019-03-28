@@ -57,12 +57,17 @@ func accept(w http.ResponseWriter, r *http.Request) {
 }
 
 func decodeAndExecute(client *wsClient, message string) bool {
+	const (
+		errBadRequest   = "error Bad Request"
+		errUnauthorized = "error Unauthorized"
+	)
+
 	parts := strings.Split(message, " ")
 
 	switch parts[0] {
 	case "register":
 		if len(parts) < 3 {
-			return client.write("error Bad Request")
+			return client.write(errBadRequest)
 		}
 
 		err := backend.Register(parts[1], parts[2])
@@ -75,24 +80,33 @@ func decodeAndExecute(client *wsClient, message string) bool {
 
 	case "login":
 		if len(parts) < 3 {
-			return client.write("error Bad Request")
+			return client.write(errBadRequest)
 		}
 
-		err := backend.Login(parts[1], parts[2], client)
+		user, err := backend.Login(parts[1], parts[2], client)
 		if err != nil {
 			return client.write(err.Error())
 		}
 
 		client.username = parts[1]
-		return client.write("OK")
+		if !client.write("OK") {
+			return false
+		}
+
+		for followee := range user.follows {
+			if !client.write("follow " + followee.Username) {
+				return false
+			}
+		}
+		return true
 
 	case "post":
 		if client.username == "" {
-			return client.write("error Unauthorized")
+			return client.write(errUnauthorized)
 		}
 
 		if len(parts) < 2 {
-			return client.write("error Bad Request")
+			return client.write(errBadRequest)
 		}
 
 		msgID, err := backend.Post(client.username, strings.Join(parts[1:], " "))
@@ -104,7 +118,7 @@ func decodeAndExecute(client *wsClient, message string) bool {
 
 	case "buzzfeed":
 		if len(parts) < 2 {
-			return client.write("error Bad Request")
+			return client.write(errBadRequest)
 		}
 
 		msgs := backend.Messages(parts[1])
@@ -120,9 +134,25 @@ func decodeAndExecute(client *wsClient, message string) bool {
 			}
 		}
 		return true
+
+	case "follow":
+		if client.username == "" {
+			return client.write(errUnauthorized)
+		}
+
+		if len(parts) < 2 {
+			return client.write(errBadRequest)
+		}
+
+		err := backend.Follow(parts[1], client.username)
+		if err != nil {
+			return client.write(err.Error())
+		}
+
+		return client.write("follow " + parts[1])
 	}
 
-	return client.write("error Bad Request")
+	return client.write(errBadRequest)
 }
 
 func (client *wsClient) write(reply string) bool {
@@ -141,17 +171,30 @@ func (client *wsClient) write(reply string) bool {
 }
 
 func (client *wsClient) Process(msg Message) {
-	if msg.Poster.Username != client.username {
-		mentioned := false
+	interested := msg.Poster.Username == client.username
+
+	if !interested {
+		// Check if user is mentioned.
 		for _, name := range msg.Mentions {
 			if name == client.username {
-				mentioned = true
+				interested = true
 				break
 			}
 		}
-		if !mentioned {
-			return
+	}
+
+	if !interested {
+		// Check if following poster.
+		for follower := range msg.Poster.followers {
+			if follower.Username == client.username {
+				interested = true
+				break
+			}
 		}
+	}
+
+	if !interested {
+		return
 	}
 
 	encoded, err := json.Marshal(msg)

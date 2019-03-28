@@ -42,7 +42,7 @@ type Server interface {
 	Tagged(tag string) []Message
 
 	Register(username, password string) error
-	Login(username, password string, client Client) error
+	Login(username, password string, client Client) (*User, error)
 	Logout(username string, client Client)
 }
 
@@ -128,8 +128,8 @@ func (server *concServer) process() {
 			go respond(&req, response{error: err})
 
 		case req := <-server.login:
-			err := server.actual.Login(req.args[0], req.args[1], req.client)
-			go respond(&req, response{error: err})
+			user, err := server.actual.Login(req.args[0], req.args[1], req.client)
+			go respond(&req, response{data: user, error: err})
 
 		case req := <-server.logout:
 			server.actual.Logout(req.args[0], req.client)
@@ -205,7 +205,7 @@ func (server *concServer) Register(username, password string) error {
 	return reply.error
 }
 
-func (server *concServer) Login(username, password string, client Client) error {
+func (server *concServer) Login(username, password string, client Client) (*User, error) {
 	resp := make(chan response)
 	server.login <- request{
 		args:   [2]string{username, password},
@@ -213,7 +213,7 @@ func (server *concServer) Login(username, password string, client Client) error 
 		resp:   resp,
 	}
 	reply := <-resp
-	return reply.error
+	return reply.data.(*User), reply.error
 }
 
 func (server *concServer) Logout(username string, client Client) {
@@ -372,23 +372,28 @@ func (server *basicServer) Register(username, password string) error {
 }
 
 // Login verify the username and password with their known credentials.
-func (server *basicServer) Login(username, password string, client Client) error {
+func (server *basicServer) Login(username, password string, client Client) (*User, error) {
 	if !validUsernameRegex.MatchString(username) {
-		return errors.New("Invalid username")
+		return nil, errors.New("Invalid username")
 	}
 
 	if len(password) == 0 {
-		return errors.New("Invalid password")
+		return nil, errors.New("Invalid password")
 	}
 
 	user, ok := server.users[username]
 	if !ok || user.password != password {
-		return errors.New("Invalid credentials")
+		return nil, errors.New("Invalid credentials")
 	}
 
 	server.clients = append(server.clients, client)
 
-	return nil
+	// WARNING: this creates a shallow copy of User. This is thread-safe
+	// because slices in go are references and, in this case, point to
+	// effectively immutable objects.
+	snapshot := *user
+
+	return &snapshot, nil
 }
 
 // Logout removes the username from the list of active clients; no further

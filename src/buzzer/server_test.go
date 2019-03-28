@@ -16,6 +16,28 @@ func TestPostByUnknownUserFails(t *testing.T) {
 	}
 }
 
+// TestCopySlice ensures my understanding of slices allows for safe copying
+// of User within the Login() function.
+func TestCopySlice(t *testing.T) {
+	type person struct {
+		name    string
+		friends []string
+	}
+
+	tom := person{"Tom", []string{"Jerry"}}
+	tomRef := &tom
+	tomCopy := *tomRef
+
+	tom.friends = append(tom.friends, "Jane")
+
+	if len(tomCopy.friends) != 1 {
+		t.Error("You've misunderstood the copy semantics")
+	}
+	if len(tomRef.friends) != 2 {
+		t.Error("You've misunderstood the pointer semantics")
+	}
+}
+
 func TestJSONMarshalling(t *testing.T) {
 	user := User{"taeber", "secret", nil, nil}
 	msg := Message{

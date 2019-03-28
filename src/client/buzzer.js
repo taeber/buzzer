@@ -20,6 +20,7 @@ class BuzzerWebView extends React.Component {
             status: "",
             compressed: false,
             profile: null,
+            following: [],
         }
 
         this.getClient = this.getClient.bind(this)
@@ -54,7 +55,7 @@ class BuzzerWebView extends React.Component {
 
         const {
             loggedIn, loginFormDisabled, username, password, messages,
-            showRegistration, status, compressed, profile,
+            showRegistration, status, compressed, profile, following
         } = this.state
 
         if (showRegistration) {
@@ -83,7 +84,11 @@ class BuzzerWebView extends React.Component {
 
         let msgs = messages
         if (!profile) {
-            msgs = msgs.filter(msg => msg.poster.username === username || (msg.mentions || []).includes(username))
+            msgs = msgs.filter(msg =>
+                msg.poster.username === username ||
+                (msg.mentions || []).includes(username) ||
+                following.indexOf(msg.poster.username) >= 0
+            )
         } else {
             msgs = msgs.filter(msg => msg.poster.username === profile || (msg.mentions || []).includes(profile))
         }
@@ -228,13 +233,28 @@ class BuzzerWebView extends React.Component {
     }
 
     handleMessage(msg) {
-        if (msg.slice(0, 5) !== "buzz ")
-            return
+        const starts = prefix =>
+            prefix === msg.slice(0, prefix.length) ? prefix.length : 0
 
-        const buzz = JSON.parse(msg.slice(5))
-        this.setState({
-            messages: this.state.messages.concat([buzz])
-        })
+        let at
+        if (at = starts("buzz ")) {
+            const buzz = JSON.parse(msg.slice(at))
+            this.setState({
+                messages: this.state.messages.concat([buzz])
+            })
+            return
+        }
+
+        if (at = starts("follow ")) {
+            const username = msg.slice(at)
+            const { following } = this.state
+            if (following.indexOf(username) < 0) {
+                this.setState({
+                    following: following.concat([username])
+                })
+            }
+            return
+        }
     }
 
     /**
