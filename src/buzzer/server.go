@@ -16,7 +16,7 @@ type Message struct {
 	Text     string    `json:"text"`
 	Poster   *User     `json:"poster"`
 	Posted   time.Time `json:"posted"`
-	Mentions []string  `json:"-"`
+	Mentions []string  `json:"mentions,omitempty"`
 }
 
 // User is a person or bot that uses the service.

@@ -50,62 +50,79 @@ func accept(w http.ResponseWriter, r *http.Request) {
 		}
 
 		log.Printf("recv: %s", message)
-		reply := decodeAndExecute(&client, string(message))
-
-		if !client.write(reply) {
+		if !decodeAndExecute(&client, string(message)) {
 			break
 		}
 	}
 }
 
-func decodeAndExecute(client *wsClient, message string) string {
+func decodeAndExecute(client *wsClient, message string) bool {
 	parts := strings.Split(message, " ")
 
 	switch parts[0] {
 	case "register":
 		if len(parts) < 3 {
-			return "error Bad Request"
+			return client.write("error Bad Request")
 		}
 
 		err := backend.Register(parts[1], parts[2])
 		if err != nil {
-			return err.Error()
+			return client.write(err.Error())
 		}
 
 		client.username = parts[1]
-		return "OK"
+		return client.write("OK")
 
 	case "login":
 		if len(parts) < 3 {
-			return "error Bad Request"
+			return client.write("error Bad Request")
 		}
 
 		err := backend.Login(parts[1], parts[2], client)
 		if err != nil {
-			return err.Error()
+			return client.write(err.Error())
 		}
 
 		client.username = parts[1]
-		return "OK"
+		return client.write("OK")
 
 	case "post":
 		if client.username == "" {
-			return "error Unauthorized"
+			return client.write("error Unauthorized")
 		}
 
 		if len(parts) < 2 {
-			return "error Bad Request"
+			return client.write("error Bad Request")
 		}
 
 		msgID, err := backend.Post(client.username, strings.Join(parts[1:], " "))
 		if err != nil {
-			return err.Error()
+			return client.write(err.Error())
 		}
 
-		return "OK " + strconv.FormatUint(msgID, 10)
+		return client.write("OK " + strconv.FormatUint(msgID, 10))
+
+	case "buzzfeed":
+		if len(parts) < 2 {
+			return client.write("error Bad Request")
+		}
+
+		msgs := backend.Messages(parts[1])
+		for _, msg := range msgs {
+			encoded, err := json.Marshal(msg)
+			if err != nil {
+				log.Println("failed to convert msg to JSON: ", msg.ID)
+				return false
+			}
+
+			if !client.write("buzz " + string(encoded)) {
+				return false
+			}
+		}
+		return true
 	}
 
-	return "error Bad Request"
+	return client.write("error Bad Request")
 }
 
 func (client *wsClient) write(reply string) bool {

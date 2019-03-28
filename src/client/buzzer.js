@@ -19,6 +19,7 @@ class BuzzerWebView extends React.Component {
             messages: [],
             status: "",
             compressed: false,
+            profile: null,
         }
 
         this.getClient = this.getClient.bind(this)
@@ -27,6 +28,7 @@ class BuzzerWebView extends React.Component {
 
         this.handleLogin = this.handleLogin.bind(this)
         this.handleLogout = this.handleLogout.bind(this)
+        this.handleMention = this.handleMention.bind(this)
         this.handleMessage = this.handleMessage.bind(this)
         this.handlePost = this.handlePost.bind(this)
         this.handleRegister = this.handleRegister.bind(this)
@@ -37,24 +39,29 @@ class BuzzerWebView extends React.Component {
     componentDidMount() {
         const banner = document.getElementById("banner")
         banner.addEventListener("click", () => {
-            this.setState({ compressed: !this.state.compressed })
+            this.setState({ compressed: !this.state.compressed }, () => {
+                if (!this.state.compressed)
+                    window.scrollTo(0, 0)
+            })
         })
     }
 
     render() {
         const {
-            handleLogin, handleLogout, handlePost, handleRegister,
-            handleSearch, handleToggleForms,
+            handleLogin, handleLogout, handleMention, handlePost,
+            handleRegister, handleSearch, handleToggleForms,
         } = this
 
         const {
-            loggedIn, loginFormDisabled, username, messages, showRegistration,
-            status, compressed,
+            loggedIn, loginFormDisabled, username, password, messages,
+            showRegistration, status, compressed, profile,
         } = this.state
 
         if (showRegistration) {
             return (
                 <RegistrationForm
+                    username={username}
+                    password={password}
                     disabled={loginFormDisabled}
                     onSubmit={handleRegister}
                     onCancel={handleToggleForms}
@@ -65,6 +72,8 @@ class BuzzerWebView extends React.Component {
         if (!loggedIn) {
             return (
                 <LoginForm
+                    username={username}
+                    password={password}
                     disabled={loginFormDisabled}
                     onSubmit={handleLogin}
                     onCancel={handleToggleForms}
@@ -72,9 +81,16 @@ class BuzzerWebView extends React.Component {
             )
         }
 
+        let msgs = messages
+        if (!profile) {
+            msgs = msgs.filter(msg => msg.poster.username === username || (msg.mentions || []).includes(username))
+        } else {
+            msgs = msgs.filter(msg => msg.poster.username === profile || (msg.mentions || []).includes(profile))
+        }
+
         const messageList = (
             <ul key="messages" className="messages">
-                {messages.map(msg => (
+                {msgs.map(msg => (
                     <li className="message" key={msg.id}>
                         <div className="poster">
                             @{msg.poster.username}
@@ -82,7 +98,7 @@ class BuzzerWebView extends React.Component {
                                 {moment(msg.posted).fromNow()}
                             </span>
                         </div>
-                        <p className="text">{msg.text}</p>
+                        <p className="text">{linkify(msg.text, handleMention)}</p>
                     </li>
                 ))}
             </ul>
@@ -91,14 +107,26 @@ class BuzzerWebView extends React.Component {
         if (compressed)
             return messageList
 
-        const hero = (
-            <div key="hero" className="hero">
-                <span className="big">@{username}</span>
-                <a href="#" className="small" onClick={handleLogout}>Log out</a>
-            </div>
-        )
+        const hero = !profile
+            ? (
+                <div key="hero" className="hero">
+                    <span className="big">@{username}</span>
+                    <a href="#" className="small" onClick={handleLogout}>Log out</a>
+                </div>
+            )
+            : (
+                <div key="hero" className="hero">
+                    <span className="big">@{profile}</span>
+                    <a href="#" className="small" onClick={handleLogout}>Subscribe</a>
+                    <a href="#" className="small" onClick={
+                        (e) => { e.preventDefault(); this.setState({ profile: null }) }}
+                    >
+                        Back
+                    </a>
+                </div>
+            )
 
-        const post = (
+        const post = !profile ? (
             <form key="post" className="PostForm" onSubmit={handlePost}>
                 <input
                     name="status"
@@ -114,14 +142,14 @@ class BuzzerWebView extends React.Component {
                     Post
                 </button>
             </form>
-        )
+        ) : null
 
-        const search = (
+        const search = !profile ? (
             <form key="search" className="SearchForm" onSubmit={handleSearch}>
                 <input name="query" placeholder="#tag or @username" />
                 <button type="submit" name="post">Search</button>
             </form>
-        )
+        ) : null
 
         return [hero, post, search, messageList]
     }
@@ -135,23 +163,9 @@ class BuzzerWebView extends React.Component {
         return client
     }
 
-    async getMessages() {
-        this.setState({
-            messages: [
-                {
-                    id: -2,
-                    poster: { username: "therealbobross" },
-                    text: "Happy Trees Happy Trees!",
-                    posted: "2019-03-24T13:30:00-04:00",
-                },
-                {
-                    id: -1,
-                    poster: { username: "therealbobross" },
-                    text: "This would be a good home for my little squirrels :)",
-                    posted: "2019-03-24T13:30:01-04:00",
-                }
-            ]
-        })
+    async getMessages(username) {
+        const client = await this.getClient()
+        client.Messages(username)
     }
 
     /**
@@ -178,7 +192,7 @@ class BuzzerWebView extends React.Component {
                 loginFormDisabled: false,
                 loggedIn: true,
                 showRegistration: false,
-            }, this.getMessages)
+            }, () => this.getMessages(this.state.username))
 
         } catch (err) {
             console.error(err)
@@ -201,6 +215,16 @@ class BuzzerWebView extends React.Component {
             password: "",
             client: null,
         })
+    }
+
+    /**
+     * @param {Event} event
+     */
+    handleMention(event) {
+        event.preventDefault()
+        const username = event.target.innerText.slice("@".length)
+        this.getMessages(username)
+        this.setState({ profile: username })
     }
 
     handleMessage(msg) {
@@ -261,7 +285,7 @@ class BuzzerWebView extends React.Component {
                 password: creds.password,
                 loginFormDisabled: false,
                 showRegistration: false,
-            }, this.getMessages)
+            }, () => this.getMessages(this.state.username))
         } catch (err) {
             console.error(err)
             this.setState({ loginFormDisabled: false })
@@ -286,6 +310,8 @@ class BuzzerWebView extends React.Component {
         event.preventDefault()
         this.setState({
             showRegistration: !this.state.showRegistration,
+            username: document.getElementsByName("username")[0].value,
+            password: document.getElementsByName("password")[0].value,
         })
     }
 
@@ -308,6 +334,7 @@ function makeBuzzerClient(server, msgHandler) {
             Register: register.bind(null, ws),
             Login: login.bind(null, ws),
             Post: post.bind(null, ws),
+            Messages: getMessages.bind(null, ws),
         }
 
         client.ws.addEventListener("close", () => {
@@ -324,6 +351,33 @@ function makeBuzzerClient(server, msgHandler) {
             resolve(client)
         })
     })
+}
+
+const getMessages = (socket, username) => {
+    socket.send(["buzzfeed", username].join(" "))
+}
+
+const linkify = (msg, onClick) => {
+    const regex = /(^|[^@]*\W)(@\w+)/g
+    const matches = msg.match(regex) || []
+
+    const children = []
+
+    let lastIndex = 0
+    matches.forEach(match => {
+        let results = /(^|\W)(@\w+)/.exec(match)
+        const start = lastIndex + results.index + 1
+        if (lastIndex > 0 || start > 1) {
+            children.push(msg.slice(lastIndex, start))
+        }
+        lastIndex += results.input.length
+        children.push(
+            React.createElement("a", { href: "#mention", onClick }, results[2])
+        )
+        // console.error(results)
+    })
+    children.push(msg.slice(lastIndex))
+    return children
 }
 
 const login = (socket, username, password) => (
@@ -371,8 +425,14 @@ const register = (socket, username, password) => (
 
 const LoginForm = (props) => (
     <form className="LoginForm" onSubmit={props.onSubmit}>
-        <input name="username" autoComplete="username" placeholder="Username" />
-        <input name="password" type="password" autoComplete="current-password" placeholder="Password" />
+        <input name="username" autoComplete="username" placeholder="Username"
+            defaultValue={props.username}
+            disabled={props.disabled}
+        />
+        <input name="password" type="password" autoComplete="current-password"
+            placeholder="Password" defaultValue={props.password}
+            disabled={props.disabled}
+        />
         <button type="submit" disabled={props.disabled}>{!props.disabled ? "Log In" : "..."}</button>
         <p className="center">
             New to Buzzer? <a href="#" onClick={props.onCancel}>Sign up!</a>
@@ -382,8 +442,14 @@ const LoginForm = (props) => (
 
 const RegistrationForm = (props) => (
     <form className="LoginForm" onSubmit={props.onSubmit}>
-        <input name="username" autoComplete="username" placeholder="Username" />
-        <input name="password" type="password" autoComplete="current-password" placeholder="Password" />
+        <input name="username" autoComplete="username" placeholder="Username"
+            defaultValue={props.username}
+            disabled={props.disabled}
+        />
+        <input name="password" type="password" autoComplete="current-password"
+            placeholder="Password" defaultValue={props.password}
+            disabled={props.disabled}
+        />
         <button type="submit" disabled={props.disabled}>{!props.disabled ? "Register" : "..."}</button>
         <p className="center">
             Already registered? <a href="#" onClick={props.onCancel}>Log in</a>
