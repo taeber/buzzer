@@ -189,6 +189,14 @@ func (client *wsClient) decodeAndExecute(message string) {
 			client.Write("follow " + followee.Username)
 		}
 
+	case "logout":
+		if username == "" {
+			return
+		}
+		client.setUsername("")
+		backend.Logout(username, client)
+		client.Write("BYE")
+
 	case "post":
 		if username == "" {
 			client.Write(errUnauthorized)
