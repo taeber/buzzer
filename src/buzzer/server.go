@@ -386,12 +386,12 @@ func (server *basicServer) Login(username, password string, client Client) (*Use
 		return nil, errors.New("Invalid username")
 	}
 
-	if len(password) == 0 {
-		return nil, errors.New("Invalid password")
+	user, ok := server.users[username]
+	if !ok {
+		return nil, errors.New("Unknown user")
 	}
 
-	user, ok := server.users[username]
-	if !ok || user.password != password {
+	if user.password != password {
 		return nil, errors.New("Invalid credentials")
 	}
 
