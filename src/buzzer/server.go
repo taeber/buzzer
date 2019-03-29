@@ -111,10 +111,6 @@ func (server *concServer) process() {
 			err := server.actual.Unfollow(req.args[0], req.args[1])
 			go respond(&req, response{error: err})
 
-		case req := <-server.unfollow:
-			err := server.actual.Unfollow(req.args[0], req.args[1])
-			go respond(&req, response{error: err})
-
 		case req := <-server.messages:
 			msgs := server.actual.Messages(req.args[0])
 			go respond(&req, response{data: msgs})
@@ -306,7 +302,7 @@ func (server *basicServer) Unfollow(followee, follower string) error {
 	}
 
 	delete(ufollower.follows, ufollowee)
-	delete(ufollowee.follows, ufollower)
+	delete(ufollowee.followers, ufollower)
 
 	return nil
 }
