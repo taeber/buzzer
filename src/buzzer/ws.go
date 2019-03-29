@@ -160,7 +160,7 @@ func (client *wsClient) decodeAndExecute(message string) {
 
 		err := backend.Register(parts[1], parts[2])
 		if err != nil {
-			client.Write(err.Error())
+			client.Write("error register " + err.Error())
 			return
 		}
 
@@ -178,7 +178,7 @@ func (client *wsClient) decodeAndExecute(message string) {
 
 		user, err := backend.Login(parts[1], parts[2], client)
 		if err != nil {
-			client.Write(err.Error())
+			client.Write("error login " + err.Error())
 			return
 		}
 
@@ -202,7 +202,7 @@ func (client *wsClient) decodeAndExecute(message string) {
 
 		msgID, err := backend.Post(username, strings.Join(parts[1:], " "))
 		if err != nil {
-			client.Write(err.Error())
+			client.Write("error post " + err.Error())
 			return
 		}
 
@@ -238,7 +238,7 @@ func (client *wsClient) decodeAndExecute(message string) {
 
 		err := backend.Follow(parts[1], username)
 		if err != nil {
-			client.Write(err.Error())
+			client.Write("error follow " + err.Error())
 			return
 		}
 		// client.Write("follow " + parts[1])
@@ -256,7 +256,7 @@ func (client *wsClient) decodeAndExecute(message string) {
 
 		err := backend.Unfollow(parts[1], username)
 		if err != nil {
-			client.Write(err.Error())
+			client.Write("error unfollow " + err.Error())
 			return
 		}
 		// client.Write("unfollow " + parts[1])
