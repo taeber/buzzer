@@ -50,6 +50,7 @@ type Server interface {
 // ensures it is done in a thread-safe way.
 type Client interface {
 	Process(msg Message)
+	Subscription(followee, follower string, unfollow bool)
 }
 
 // StartServer properly initializes, starts, and returns a new Server.
@@ -282,6 +283,12 @@ func (server *basicServer) Follow(followee, follower string) error {
 	ufollower.follows[ufollowee] = true
 	ufollowee.followers[ufollower] = true
 
+	go func(clients []Client) {
+		for _, client := range clients {
+			client.Subscription(followee, follower, false)
+		}
+	}(server.clients)
+
 	return nil
 }
 
@@ -303,6 +310,12 @@ func (server *basicServer) Unfollow(followee, follower string) error {
 
 	delete(ufollower.follows, ufollowee)
 	delete(ufollowee.followers, ufollower)
+
+	go func(clients []Client) {
+		for _, client := range clients {
+			client.Subscription(followee, follower, true)
+		}
+	}(server.clients)
 
 	return nil
 }

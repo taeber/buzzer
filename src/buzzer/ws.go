@@ -10,20 +10,30 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"sync"
 
 	"github.com/gorilla/websocket"
 )
 
+type subscription struct {
+	followee, follower string
+	unfollow           bool
+}
+
 type wsClient struct {
-	username string
-	socket   *websocket.Conn
-	lock     sync.Mutex
+	username  chan string // Alternative is to use sync/atomic.Value.
+	socket    *websocket.Conn
+	send      chan string
+	subscribe chan subscription
 }
 
 var backend Server
-var upgrader = websocket.Upgrader{} // use default options
+var upgrader websocket.Upgrader
 
+// accept handles a new HTTP connection by upgrading it to a WebSocket one. It
+// also creates three goroutines: one reader for handling incoming messages
+// one writer for sending messages, and one processer which decodes the
+// messages, performs some action, then responds. Then, it waits around until
+// it gets the shutdown signal.
 func accept(w http.ResponseWriter, r *http.Request) {
 	c, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -33,92 +43,175 @@ func accept(w http.ResponseWriter, r *http.Request) {
 	defer c.Close()
 
 	client := wsClient{
-		socket: c,
+		username:  make(chan string, 1),
+		socket:    c,
+		send:      make(chan string),
+		subscribe: make(chan subscription),
 	}
 
-	for {
-		mt, message, err := c.ReadMessage()
+	// client.username is used as a semaphore of sorts. There can be multiple
+	// goroutines reading and writing to it. Therefore, we set the initial
+	// value here, then expect subsequent calls to aquire then release it.
+	go func() {
+		client.username <- ""
+	}()
 
-		if err != nil {
-			log.Println("read:", err)
+	received := make(chan string)
+	shutdown := make(chan bool)
+
+	// Handles all incoming messages.
+	go func() {
+		defer func() { shutdown <- true }()
+		for {
+			mt, msg, err := c.ReadMessage()
+
+			if err != nil {
+				log.Println("read:", err)
+				break
+			}
+
+			if mt != websocket.TextMessage {
+				log.Println("discarding received binary message")
+				continue
+			}
+
+			log.Printf("recv: %s", msg)
+			received <- string(msg)
+		}
+	}()
+
+	// Sends any outgoing messages.
+	go func() {
+		defer func() { shutdown <- true }()
+		for {
+			msg := <-client.send
+			log.Println("write:", msg)
+
+			err := client.socket.WriteMessage(websocket.TextMessage, []byte(msg))
+			if err == nil {
+				continue
+			}
+
+			log.Println("write:", err)
+			shutdown <- true
 			break
 		}
+	}()
 
-		if mt != websocket.TextMessage {
-			log.Println("discarding received binary message")
-			continue
-		}
+	// Processes any messages received.
+	go func() {
+		defer func() { shutdown <- true }()
+		for {
+			select {
+			case msg := <-received:
+				client.decodeAndExecute(msg)
 
-		log.Printf("recv: %s", message)
-		if !decodeAndExecute(&client, string(message)) {
-			break
+			case sub := <-client.subscribe:
+				username := client.getUsername()
+
+				if sub.follower != username {
+					continue
+				}
+
+				if sub.unfollow {
+					client.Write("unfollow " + sub.followee)
+				} else {
+					client.Write("follow " + sub.followee)
+				}
+			}
 		}
+	}()
+
+	// Wait for shutdown.
+	<-shutdown
+
+	username := <-client.username
+	if username != "" {
+		backend.Logout(username, &client)
 	}
 }
 
-func decodeAndExecute(client *wsClient, message string) bool {
+func (client *wsClient) getUsername() (username string) {
+	username = <-client.username
+	client.username <- username
+	return
+}
+
+func (client *wsClient) setUsername(username string) {
+	<-client.username
+	client.username <- username
+}
+
+func (client *wsClient) decodeAndExecute(message string) {
 	const (
 		errBadRequest   = "error Bad Request"
 		errUnauthorized = "error Unauthorized"
 	)
 
 	parts := strings.Split(message, " ")
+	username := client.getUsername()
 
 	switch parts[0] {
 	case "register":
 		if len(parts) < 3 {
-			return client.write(errBadRequest)
+			client.Write(errBadRequest)
+			return
 		}
 
 		err := backend.Register(parts[1], parts[2])
 		if err != nil {
-			return client.write(err.Error())
+			client.Write(err.Error())
+			return
 		}
 
-		client.username = parts[1]
-		return client.write("OK")
+		client.Write("OK")
 
 	case "login":
 		if len(parts) < 3 {
-			return client.write(errBadRequest)
+			client.Write(errBadRequest)
+			return
+		}
+
+		if username != "" {
+			backend.Logout(username, client)
 		}
 
 		user, err := backend.Login(parts[1], parts[2], client)
 		if err != nil {
-			return client.write(err.Error())
+			client.Write(err.Error())
+			return
 		}
 
-		client.username = parts[1]
-		if !client.write("OK") {
-			return false
-		}
+		client.setUsername(parts[1])
+		client.Write("OK")
 
 		for followee := range user.follows {
-			if !client.write("follow " + followee.Username) {
-				return false
-			}
+			client.Write("follow " + followee.Username)
 		}
-		return true
 
 	case "post":
-		if client.username == "" {
-			return client.write(errUnauthorized)
+		if username == "" {
+			client.Write(errUnauthorized)
+			return
 		}
 
 		if len(parts) < 2 {
-			return client.write(errBadRequest)
+			client.Write(errBadRequest)
+			return
 		}
 
-		msgID, err := backend.Post(client.username, strings.Join(parts[1:], " "))
+		msgID, err := backend.Post(username, strings.Join(parts[1:], " "))
 		if err != nil {
-			return client.write(err.Error())
+			client.Write(err.Error())
+			return
 		}
 
-		return client.write("OK " + strconv.FormatUint(msgID, 10))
+		client.Write("OK " + strconv.FormatUint(msgID, 10))
 
 	case "buzzfeed":
 		if len(parts) < 2 {
-			return client.write(errBadRequest)
+			client.Write(errBadRequest)
+			return
 		}
 
 		msgs := backend.Messages(parts[1])
@@ -126,57 +219,61 @@ func decodeAndExecute(client *wsClient, message string) bool {
 			encoded, err := json.Marshal(msg)
 			if err != nil {
 				log.Println("failed to convert msg to JSON: ", msg.ID)
-				return false
+				return
 			}
 
-			if !client.write("buzz " + string(encoded)) {
-				return false
-			}
+			client.Write("buzz " + string(encoded))
 		}
-		return true
 
 	case "follow":
-		if client.username == "" {
-			return client.write(errUnauthorized)
+		if username == "" {
+			client.Write(errUnauthorized)
+			return
 		}
 
 		if len(parts) < 2 {
-			return client.write(errBadRequest)
+			client.Write(errBadRequest)
+			return
 		}
 
-		err := backend.Follow(parts[1], client.username)
+		err := backend.Follow(parts[1], username)
 		if err != nil {
-			return client.write(err.Error())
+			client.Write(err.Error())
+			return
+		}
+		// client.Write("follow " + parts[1])
+
+	case "unfollow":
+		if username == "" {
+			client.Write(errUnauthorized)
+			return
 		}
 
-		return client.write("follow " + parts[1])
+		if len(parts) < 2 {
+			client.Write(errBadRequest)
+			return
+		}
+
+		err := backend.Unfollow(parts[1], username)
+		if err != nil {
+			client.Write(err.Error())
+			return
+		}
+		// client.Write("unfollow " + parts[1])
+
+	default:
+		client.Write(errBadRequest)
 	}
-
-	return client.write(errBadRequest)
-}
-
-func (client *wsClient) write(reply string) bool {
-	log.Println("write:", reply)
-
-	client.lock.Lock()
-	err := client.socket.WriteMessage(websocket.TextMessage, []byte(reply))
-	client.lock.Unlock()
-
-	if err == nil {
-		return true
-	}
-
-	log.Println("write:", err)
-	return false
 }
 
 func (client *wsClient) Process(msg Message) {
-	interested := msg.Poster.Username == client.username
+	username := client.getUsername()
+	interested := msg.Poster.Username == username
 
 	if !interested {
 		// Check if user is mentioned.
 		for _, name := range msg.Mentions {
-			if name == client.username {
+			if name == username {
 				interested = true
 				break
 			}
@@ -186,7 +283,7 @@ func (client *wsClient) Process(msg Message) {
 	if !interested {
 		// Check if following poster.
 		for follower := range msg.Poster.followers {
-			if follower.Username == client.username {
+			if follower.Username == username {
 				interested = true
 				break
 			}
@@ -203,7 +300,15 @@ func (client *wsClient) Process(msg Message) {
 		return
 	}
 
-	client.write("buzz " + string(encoded))
+	client.send <- "buzz " + string(encoded)
+}
+
+func (client *wsClient) Subscription(followee, follower string, unfollow bool) {
+	client.subscribe <- subscription{followee, follower, unfollow}
+}
+
+func (client *wsClient) Write(reply string) {
+	client.send <- reply
 }
 
 // StartWebServer creates a WebSocket-enabled, HTTP Server and listens at the

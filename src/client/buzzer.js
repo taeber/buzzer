@@ -255,6 +255,20 @@ class BuzzerWebView extends React.Component {
             }
             return
         }
+
+        if (at = starts("unfollow ")) {
+            const username = msg.slice(at)
+            const { following } = this.state
+            const index = following.indexOf(username)
+            if (index >= 0) {
+                this.setState({
+                    following:
+                        following.slice(0, index)
+                            .concat(following.slice(index + 1))
+                })
+            }
+            return
+        }
     }
 
     /**
