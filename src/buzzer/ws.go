@@ -249,7 +249,6 @@ func (client *wsClient) decodeAndExecute(message string) {
 			client.Write("error follow " + err.Error())
 			return
 		}
-		// client.Write("follow " + parts[1])
 
 	case "unfollow":
 		if username == "" {
@@ -267,7 +266,22 @@ func (client *wsClient) decodeAndExecute(message string) {
 			client.Write("error unfollow " + err.Error())
 			return
 		}
-		// client.Write("unfollow " + parts[1])
+
+	case "topic":
+		if len(parts) < 2 {
+			client.Write(errBadRequest)
+		}
+
+		msgs := backend.Tagged(parts[1])
+		for _, msg := range msgs {
+			encoded, err := json.Marshal(msg)
+			if err != nil {
+				log.Println("failed to convert msg to JSON: ", msg.ID)
+				return
+			}
+
+			client.Write("buzz " + string(encoded))
+		}
 
 	default:
 		client.Write(errBadRequest)

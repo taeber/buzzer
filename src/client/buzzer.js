@@ -21,6 +21,7 @@ class BuzzerWebView extends React.Component {
             compressed: false,
             profile: null,
             following: [],
+            topic: null,
         }
 
         this.getClient = this.getClient.bind(this)
@@ -55,7 +56,7 @@ class BuzzerWebView extends React.Component {
 
         const {
             loggedIn, loginFormDisabled, username, password, messages,
-            showRegistration, status, compressed, profile, following
+            showRegistration, status, compressed, profile, following, topic
         } = this.state
 
         if (showRegistration) {
@@ -83,14 +84,19 @@ class BuzzerWebView extends React.Component {
         }
 
         let msgs = messages
-        if (!profile) {
+        if (profile) {
+            msgs = msgs.filter(msg =>
+                msg.poster.username === profile ||
+                (msg.mentions || []).includes(profile)
+            )
+        } else if (topic) {
+            msgs = msgs.filter(msg => (msg.tags || []).includes(topic))
+        } else {
             msgs = msgs.filter(msg =>
                 msg.poster.username === username ||
                 (msg.mentions || []).includes(username) ||
                 following.indexOf(msg.poster.username) >= 0
             )
-        } else {
-            msgs = msgs.filter(msg => msg.poster.username === profile || (msg.mentions || []).includes(profile))
         }
 
         const messageList = (
@@ -112,28 +118,48 @@ class BuzzerWebView extends React.Component {
         if (compressed)
             return messageList
 
-        const hero = !profile
-            ? (
+        let hero
+        if (!profile && !topic) {
+            hero = (
                 <div key="hero" className="hero">
                     <span className="big">@{username}</span>
-                    <a href="#" className="small" onClick={handleLogout}>Log out</a>
+                    <button onClick={handleLogout}>Log out</button>
                 </div>
             )
-            : (
+        } else if (profile && !topic) {
+            hero = (
                 <div key="hero" className="hero">
                     <span className="big">@{profile}</span>
-                    <a href="#" className="small" onClick={handleLogout}>Subscribe</a>
+                    <button onClick={
+                        (e) => { e.preventDefault(); this.setState({ profile: null, topic: null }) }
+                    }>
+                        Back
+                    </button>
+                    <button>Subscribe</button>
+                    <a href="#" className="small" onClick={() => alert("TODO: Implement")}>Subscribe</a>
                     <a href="#" className="small" onClick={
-                        (e) => { e.preventDefault(); this.setState({ profile: null }) }}
+                        (e) => { e.preventDefault(); this.setState({ profile: null, topic: null }) }}
+                    >
+                        Back
+                    </a>
+                </div >
+            )
+        } else {
+            hero = (
+                <div key="hero" className="hero">
+                    <span className="big">#{topic}</span>
+                    <a href="#" className="small" onClick={
+                        (e) => { e.preventDefault(); this.setState({ profile: null, topic: null }) }}
                     >
                         Back
                     </a>
                 </div>
             )
+        }
 
-        const post = !profile ? (
+        const post = !profile && !topic ? (
             <form key="post" className="PostForm" onSubmit={handlePost}>
-                <input
+                <textarea
                     name="status"
                     placeholder="What do you wanna say?"
                     value={status}
@@ -149,14 +175,16 @@ class BuzzerWebView extends React.Component {
             </form>
         ) : null
 
-        const search = !profile ? (
+        const search = !profile && !topic ? (
             <form key="search" className="SearchForm" onSubmit={handleSearch}>
                 <input name="query" placeholder="#tag or @username" />
-                <button type="submit" name="post">Search</button>
+                <button type="submit" name="post" disabled={loginFormDisabled}>
+                    Search
+                </button>
             </form>
         ) : null
 
-        return [hero, post, search, messageList]
+        return [hero, post, search, msgs.length > 0 && messageList]
     }
 
     async getClient() {
@@ -239,9 +267,11 @@ class BuzzerWebView extends React.Component {
         let at
         if (at = starts("buzz ")) {
             const buzz = JSON.parse(msg.slice(at))
-            this.setState({
-                messages: this.state.messages.concat([buzz])
-            })
+            if (!this.state.messages.some(m => m.id === buzz.id)) {
+                this.setState({
+                    messages: this.state.messages.concat([buzz])
+                })
+            }
             return
         }
 
@@ -349,12 +379,33 @@ class BuzzerWebView extends React.Component {
         })
     }
 
-    search(query) {
+    async search(query) {
         if (!query)
             return
 
-        if (query[0] !== '#' || query[0] !== '@') {
-            setTimeout(() => alert("Error! Query must start with # or @."), 1)
+        if (query[0] !== '#' && query[0] !== '@')
+            return setTimeout(() => alert("Error! Query must start with # or @."), 1)
+
+        if (query.length < 2)
+            return setTimeout(() => alert("Error! Query too short."), 1)
+
+
+        if (query[0] === '#') {
+            this.setState({ loginFormDisabled: true })
+
+            const client = await this.getClient()
+            const topic = query.slice(1)
+
+            try {
+                client.Tagged(topic)
+                this.setState({ topic })
+            } catch (err) {
+                console.error(err)
+                alert(`Error! ${err}`)
+            } finally {
+                this.setState({ loginFormDisabled: false })
+            }
+
             return
         }
     }
@@ -369,6 +420,7 @@ function makeBuzzerClient(server, msgHandler) {
             Login: login.bind(null, ws),
             Post: post.bind(null, ws),
             Messages: getMessages.bind(null, ws),
+            Tagged: tagged.bind(null, ws),
         }
 
         client.ws.addEventListener("close", () => {
@@ -456,6 +508,10 @@ const register = (socket, username, password) => (
         socket.send(["register", username, password].join(" "))
     })
 )
+
+const tagged = (socket, topic) => {
+    socket.send(["topic", topic].join(' '))
+}
 
 const LoginForm = (props) => (
     <form className="LoginForm" onSubmit={props.onSubmit}>

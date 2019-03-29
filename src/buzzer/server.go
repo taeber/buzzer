@@ -17,6 +17,7 @@ type Message struct {
 	Poster   *User     `json:"poster"`
 	Posted   time.Time `json:"posted"`
 	Mentions []string  `json:"mentions,omitempty"`
+	Tags     []string  `json:"tags,omitempty"`
 }
 
 // User is a person or bot that uses the service.
@@ -184,7 +185,7 @@ func (server *concServer) Messages(username string) []Message {
 
 func (server *concServer) Tagged(tag string) []Message {
 	resp := make(chan response)
-	server.messages <- request{
+	server.tagged <- request{
 		args: [2]string{tag},
 		resp: resp,
 	}
@@ -250,7 +251,7 @@ func (server *basicServer) Post(username, message string) (MessageID, error) {
 		Poster:   user,
 		Posted:   time.Now(),
 		Mentions: parseMentions(message),
-		// Tags: parseTags(messag)
+		Tags:     parseTags(message),
 	}
 
 	server.messages[msg.ID] = msg
