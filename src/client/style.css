@@ -99,7 +99,7 @@ button {
 }
 
 button:disabled {
-    background: white;
+    background: lightgray;
     color: rebeccapurple;
 }
 

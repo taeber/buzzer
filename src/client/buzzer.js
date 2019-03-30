@@ -30,11 +30,12 @@ class BuzzerWebView extends React.Component {
 
         this.handleLogin = this.handleLogin.bind(this)
         this.handleLogout = this.handleLogout.bind(this)
-        this.handleMention = this.handleMention.bind(this)
         this.handleMessage = this.handleMessage.bind(this)
+        this.handleMessageClick = this.handleMessageClick.bind(this)
         this.handlePost = this.handlePost.bind(this)
         this.handleRegister = this.handleRegister.bind(this)
         this.handleSearch = this.handleSearch.bind(this)
+        this.handleSubscriptionChange = this.handleSubscriptionChange.bind(this)
         this.handleToggleForms = this.handleToggleForms.bind(this)
     }
 
@@ -50,8 +51,9 @@ class BuzzerWebView extends React.Component {
 
     render() {
         const {
-            handleLogin, handleLogout, handleMention, handlePost,
-            handleRegister, handleSearch, handleToggleForms,
+            handleLogin, handleLogout, handlePost, handleRegister,
+            handleSearch, handleSubscriptionChange, handleMessageClick,
+            handleToggleForms,
         } = this
 
         const {
@@ -109,7 +111,7 @@ class BuzzerWebView extends React.Component {
                                 {moment(msg.posted).fromNow()}
                             </span>
                         </div>
-                        <p className="text">{linkify(msg.text, handleMention)}</p>
+                        <p className="text">{linkify(msg.text, handleMessageClick)}</p>
                     </li>
                 ))}
             </ul>
@@ -133,26 +135,22 @@ class BuzzerWebView extends React.Component {
                     <button onClick={
                         (e) => { e.preventDefault(); this.setState({ profile: null, topic: null }) }
                     }>
-                        Back
+                        Home
                     </button>
-                    <button>Subscribe</button>
-                    <a href="#" className="small" onClick={() => alert("TODO: Implement")}>Subscribe</a>
-                    <a href="#" className="small" onClick={
-                        (e) => { e.preventDefault(); this.setState({ profile: null, topic: null }) }}
-                    >
-                        Back
-                    </a>
+                    <button onClick={handleSubscriptionChange}>
+                        {following.indexOf(profile) < 0 ? "Subscribe" : "Unsubscribe"}
+                    </button>
                 </div >
             )
         } else {
             hero = (
                 <div key="hero" className="hero">
                     <span className="big">#{topic}</span>
-                    <a href="#" className="small" onClick={
-                        (e) => { e.preventDefault(); this.setState({ profile: null, topic: null }) }}
-                    >
-                        Back
-                    </a>
+                    <button onClick={
+                        (e) => { e.preventDefault(); this.setState({ profile: null, topic: null }) }
+                    }>
+                        Home
+                    </button>
                 </div>
             )
         }
@@ -250,16 +248,6 @@ class BuzzerWebView extends React.Component {
         })
     }
 
-    /**
-     * @param {Event} event
-     */
-    handleMention(event) {
-        event.preventDefault()
-        const username = event.target.innerText.slice("@".length)
-        this.getMessages(username)
-        this.setState({ profile: username })
-    }
-
     handleMessage(msg) {
         const starts = prefix =>
             prefix === msg.slice(0, prefix.length) ? prefix.length : 0
@@ -299,6 +287,11 @@ class BuzzerWebView extends React.Component {
             }
             return
         }
+    }
+
+    handleMessageClick(event) {
+        event.preventDefault()
+        this.search(event.target.innerText)
     }
 
     /**
@@ -370,6 +363,29 @@ class BuzzerWebView extends React.Component {
     /**
      * @param {Event} event
      */
+    async handleSubscriptionChange(event) {
+        event.preventDefault()
+
+        const client = await this.getClient()
+        const followee = this.state.profile
+
+        try {
+            if (this.state.following.indexOf(followee) < 0)
+                client.Follow(followee)
+            else
+                client.Unfollow(followee)
+        } catch (err) {
+            console.error(err)
+            alert(`Error! ${err}`)
+        }
+
+        return
+
+    }
+
+    /**
+     * @param {Event} event
+     */
     handleToggleForms(event) {
         event.preventDefault()
         this.setState({
@@ -406,10 +422,15 @@ class BuzzerWebView extends React.Component {
                 this.setState({ loginFormDisabled: false })
             }
 
-            return
+        } else {
+            const username = query.slice(1)
+            this.getMessages(username)
+            this.setState({ profile: username })
         }
     }
 }
+
+/// Client
 
 function makeBuzzerClient(server, msgHandler) {
     return new Promise((resolve) => {
@@ -421,6 +442,8 @@ function makeBuzzerClient(server, msgHandler) {
             Post: post.bind(null, ws),
             Messages: getMessages.bind(null, ws),
             Tagged: tagged.bind(null, ws),
+            Follow: follow.bind(null, ws),
+            Unfollow: unfollow.bind(null, ws),
         }
 
         client.ws.addEventListener("close", () => {
@@ -439,31 +462,12 @@ function makeBuzzerClient(server, msgHandler) {
     })
 }
 
-const getMessages = (socket, username) => {
-    socket.send(["buzzfeed", username].join(" "))
+const follow = (socket, followee) => {
+    socket.send(["follow", followee].join(" "))
 }
 
-const linkify = (msg, onClick) => {
-    const regex = /(^|[^@]*\W)(@\w+)/g
-    const matches = msg.match(regex) || []
-
-    const children = []
-
-    let lastIndex = 0
-    matches.forEach(match => {
-        let results = /(^|\W)(@\w+)/.exec(match)
-        const start = lastIndex + results.index + 1
-        if (lastIndex > 0 || start > 1) {
-            children.push(msg.slice(lastIndex, start))
-        }
-        lastIndex += results.input.length
-        children.push(
-            React.createElement("a", { href: "#mention", onClick }, results[2])
-        )
-        // console.error(results)
-    })
-    children.push(msg.slice(lastIndex))
-    return children
+const getMessages = (socket, username) => {
+    socket.send(["buzzfeed", username].join(" "))
 }
 
 const login = (socket, username, password) => (
@@ -512,6 +516,94 @@ const register = (socket, username, password) => (
 const tagged = (socket, topic) => {
     socket.send(["topic", topic].join(' '))
 }
+
+const unfollow = (socket, followee) => {
+    socket.send(["unfollow", followee].join(" "))
+}
+
+
+/// Parsing
+
+const modes = {
+    READY: Symbol(''),
+    MENTION: Symbol('@'),
+    TAG: Symbol('#'),
+    WITHIN: Symbol('w')
+}
+
+const isWordChar = ch => /\w/.test(ch)
+
+function linkify(msg, onClick) {
+    const children = []
+    let text = ""
+    let mode = modes.READY
+
+    msg += '\0'
+    for (let i = 0; i < msg.length; i++) {
+        const ch = msg[i]
+        switch (mode) {
+            case modes.READY:
+                if (ch === '@' || ch === '#') {
+                    if (text.length > 0) {
+                        children.push(text)
+                        text = ""
+                    }
+                    mode = ch === '@' ? modes.MENTION : modes.TAG
+                } else if (isWordChar(ch)) {
+                    mode = modes.WITHIN
+                }
+                break
+
+            case modes.MENTION:
+                if (isWordChar(ch))
+                    break
+
+                if (text.length > 0) {
+                    children.push(
+                        React.createElement("a", { href: "#mention", onClick }, text)
+                    )
+                    text = ""
+                }
+
+                if (ch === '@' || ch === '#')
+                    mode = modes.WITHIN
+                else
+                    mode = modes.READY
+                break
+
+            case modes.TAG:
+                if (isWordChar(ch))
+                    break
+
+                if (text.length > 0) {
+                    children.push(
+                        React.createElement("a", { href: "#tag", onClick }, text)
+                    )
+                    text = ""
+                }
+
+                if (ch === '@' || ch === '#')
+                    mode = modes.WITHIN
+                else
+                    mode = modes.READY
+                break
+
+            case modes.WITHIN:
+                if (!isWordChar(ch))
+                    mode = modes.READY
+                break
+        }
+        text += ch
+    }
+
+    if (text.length > 0)
+        children.push(text)
+
+    return children
+}
+
+
+/// React/UI Components
 
 const LoginForm = (props) => (
     <form className="LoginForm" onSubmit={props.onSubmit}>
