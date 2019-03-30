@@ -168,7 +168,7 @@ class BuzzerWebView extends React.Component {
                     type="submit"
                     disabled={status === "" || loginFormDisabled}
                 >
-                    Post
+                    Buzz
                 </button>
             </form>
         ) : null
