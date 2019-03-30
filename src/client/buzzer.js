@@ -92,7 +92,7 @@ class BuzzerWebView extends React.Component {
                 (msg.mentions || []).includes(profile)
             )
         } else if (topic) {
-            msgs = msgs.filter(msg => (msg.tags || []).includes(topic))
+            msgs = msgs.filter(msg => (msg.tags || []).includes(topic.toLowerCase()))
         } else {
             msgs = msgs.filter(msg =>
                 msg.poster.username === username ||

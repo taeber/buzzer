@@ -344,6 +344,8 @@ func (server *basicServer) Messages(username string) []Message {
 func (server *basicServer) Tagged(tag string) []Message {
 	var messages []Message
 
+	tag = strings.ToLower(tag)
+
 	for _, msg := range server.messages {
 		if strings.Contains(msg.Text, "#"+tag) {
 			messages = append(messages, msg)
