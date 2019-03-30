@@ -106,7 +106,7 @@ class BuzzerWebView extends React.Component {
                 {msgs.map(msg => (
                     <li className="message" key={msg.id}>
                         <div className="poster">
-                            @{msg.poster.username}
+                            <a href="#mention" onClick={handleMessageClick}>@{msg.poster.username}</a>
                             <span className="posted">
                                 {moment(msg.posted).fromNow()}
                             </span>

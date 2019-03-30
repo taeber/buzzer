@@ -116,3 +116,9 @@ button:disabled {
 .gray   { color: gray }
 .small  { font-size: small }
 .big    { font-size: 1.5em }
+
+a,
+a:visited {
+    color: rebeccapurple;
+    text-decoration: none;
+}
