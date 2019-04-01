@@ -121,7 +121,7 @@ class BuzzerWebView extends React.Component {
             return messageList
 
         let hero
-        if (!profile && !topic) {
+        if ((!profile && !topic) || (!topic && profile === username)) {
             hero = (
                 <div key="hero" className="hero">
                     <span className="big">@{username}</span>
@@ -155,7 +155,7 @@ class BuzzerWebView extends React.Component {
             )
         }
 
-        const post = !profile && !topic ? (
+        const post = ((!profile && !topic) || (!topic && profile === username)) ? (
             <form key="post" className="PostForm" onSubmit={handlePost}>
                 <textarea
                     name="status"
@@ -173,7 +173,7 @@ class BuzzerWebView extends React.Component {
             </form>
         ) : null
 
-        const search = !profile && !topic ? (
+        const search = ((!profile && !topic) || (!topic && profile === username)) ? (
             <form key="search" className="SearchForm" onSubmit={handleSearch}>
                 <input name="query" placeholder="#tag or @username" />
                 <button type="submit" name="post" disabled={loginFormDisabled}>
@@ -257,7 +257,10 @@ class BuzzerWebView extends React.Component {
             const buzz = JSON.parse(msg.slice(at))
             if (!this.state.messages.some(m => m.id === buzz.id)) {
                 this.setState({
-                    messages: this.state.messages.concat([buzz])
+                    messages:
+                        this.state.messages
+                            .concat([buzz])
+                            .sort((a, b) => b.id - a.id)
                 })
             }
             return
@@ -285,6 +288,16 @@ class BuzzerWebView extends React.Component {
                             .concat(following.slice(index + 1))
                 })
             }
+            return
+        }
+
+        if (at = starts("error follow ")) {
+            alert(msg.slice(0))
+            return
+        }
+
+        if (at = starts("error unfollow ")) {
+            alert(msg.slice(0))
             return
         }
     }
@@ -342,7 +355,10 @@ class BuzzerWebView extends React.Component {
                 password: creds.password,
                 loginFormDisabled: false,
                 showRegistration: false,
-            }, () => this.getMessages(this.state.username))
+            }, () => {
+                this.getMessages(this.state.username)
+                client.Post(`#user @${creds.username} registered`)
+            })
         } catch (err) {
             console.error(err)
             this.setState({ loginFormDisabled: false })
@@ -414,7 +430,7 @@ class BuzzerWebView extends React.Component {
 
             try {
                 client.Tagged(topic)
-                this.setState({ topic })
+                this.setState({ topic, profile: null })
             } catch (err) {
                 console.error(err)
                 alert(`Error! ${err}`)
@@ -425,7 +441,7 @@ class BuzzerWebView extends React.Component {
         } else {
             const username = query.slice(1)
             this.getMessages(username)
-            this.setState({ profile: username })
+            this.setState({ profile: username, topic: null })
         }
     }
 }
