@@ -185,10 +185,15 @@ class BuzzerWebView extends React.Component {
         return [hero, post, search, msgs.length > 0 && messageList]
     }
 
-    async getClient() {
+    async getClient(login = true) {
         let { client } = this.state
         if (!client) {
             client = await makeBuzzerClient(this.props.server, this.handleMessage)
+            client.ws.addEventListener("close", () => {
+                this.setState({ client: null })
+            })
+            if (login && this.state.username && this.state.password)
+                await client.Login(this.state.username, this.state.password)
             this.setState({ client })
         }
         return client
@@ -207,7 +212,7 @@ class BuzzerWebView extends React.Component {
 
         this.setState({ loginFormDisabled: true })
 
-        const client = await this.getClient()
+        const client = await this.getClient(false)
 
         const creds = {
             username: document.getElementsByName("username")[0].value,
@@ -338,7 +343,7 @@ class BuzzerWebView extends React.Component {
 
         this.setState({ loginFormDisabled: true })
 
-        const client = await this.getClient()
+        const client = await this.getClient(false)
 
         const creds = {
             username: document.getElementsByName("username")[0].value,
@@ -464,8 +469,6 @@ function makeBuzzerClient(server, msgHandler) {
 
         client.ws.addEventListener("close", () => {
             console.log("BuzzerClient: closed")
-            alert("Lost connection to server")
-            // window.location = window.location
         })
         client.ws.addEventListener("message", (e) => {
             console.log("BuzzerClient: recv:", e.data)
@@ -489,7 +492,6 @@ const getMessages = (socket, username) => {
 const login = (socket, username, password) => (
     new Promise((resolve, reject) => {
         const response = (e) => {
-            socket.removeEventListener("message", response)
             if (e.data === "OK")
                 resolve()
             else
@@ -503,12 +505,15 @@ const login = (socket, username, password) => (
 const post = (socket, message) => (
     new Promise((resolve, reject) => {
         const response = (e) => {
-            socket.removeEventListener("message", response)
-            if (e.data.slice(0, 2) === "OK")
+            if (e.data.slice(0, 2) === "OK") {
                 resolve()
-            else if (e.data.slice(0, 6) === "error ")
+            } else if (e.data.slice(0, 6) === "error ") {
                 reject(e.data)
-            // Otherwise we are looking at an unrelated message.
+            } else {
+                // Otherwise we are looking at an unrelated message.
+                return
+            }
+            socket.removeEventListener("message", response)
         }
         socket.addEventListener("message", response)
         socket.send(["post", message].join(" "))
