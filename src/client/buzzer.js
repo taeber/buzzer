@@ -467,6 +467,10 @@ function makeBuzzerClient(server, msgHandler) {
             Unfollow: unfollow.bind(null, ws),
         }
 
+        client.ws.addEventListener("error", (err) => {
+            console.error(err)
+            alert("Server connection failure")
+        })
         client.ws.addEventListener("close", () => {
             console.log("BuzzerClient: closed")
         })
