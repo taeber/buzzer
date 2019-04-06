@@ -256,9 +256,15 @@ func (server *basicServer) Post(username, message string) (MessageID, error) {
 
 	server.messages[msg.ID] = msg
 
+	// WARNING: this creates a shallow copy of User. This is thread-safe
+	// because slices in go are references and, in this case, point to
+	// effectively immutable objects.
+	snapshot := msg
+	snapshot.Poster = &*user
+
 	go func(clients []Client) {
 		for _, client := range clients {
-			client.Process(msg)
+			client.Process(snapshot)
 		}
 	}(server.clients)
 

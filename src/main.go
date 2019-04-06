@@ -12,13 +12,11 @@ import (
 	"time"
 )
 
-const numActors = 2
-
 var srv buzzer.Server
 
 var endpoint = flag.String("addr", "0.0.0.0:8080", "http service address")
 var interactive = flag.Bool("client", false, "Run in client/interactive mode")
-var testMode = flag.Bool("test", false, "Run concurrency test")
+var numActors = flag.Int("actors", 0, "Run with fake actors")
 
 // There are two primary modes: interactive and non-interactive. Interactive
 // allows the user to test the implementation of functions one at a time. The
@@ -33,19 +31,20 @@ func main() {
 		return
 	}
 
-	if *testMode {
-		for i := 0; i < numActors; i++ {
-			go actor("user" + strconv.Itoa(i))
-		}
-		select {} // Waits forever.
-		return
+	for i := 0; i < *numActors; i++ {
+		go actor("user" + strconv.Itoa(i))
 	}
 
 	buzzer.StartWebServer(srv, *endpoint, flag.Arg(0))
 }
 
 func actor(name string) {
-	if err := srv.Register(name, "PWs aren't used currently"); err != nil {
+	if err := srv.Register(name, "Password? We don't need no stinkin' password!"); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return
+	}
+
+	if _, err := srv.Post(name, "#user @"+name+" registered"); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		return
 	}
@@ -61,20 +60,18 @@ func actor(name string) {
 			}
 
 		case 1:
-			other := fmt.Sprintf("user%d", rand.Intn(numActors))
+			other := fmt.Sprintf("user%d", rand.Intn(*numActors))
 			if err := srv.Follow(name, other); err == nil {
 				fmt.Printf("%s: started following %s\n", name, other)
 			}
 
 		case 2:
-			other := fmt.Sprintf("user%d", rand.Intn(numActors))
+			other := fmt.Sprintf("user%d", rand.Intn(*numActors))
 			if err := srv.Unfollow(name, other); err == nil {
 				fmt.Printf("%s: stopped following %s\n", name, other)
 			}
-
-		default:
-			time.Sleep(time.Duration(rand.Intn(500)) * time.Millisecond)
 		}
+		time.Sleep(time.Duration(rand.Intn(1000)) * time.Millisecond)
 	}
 }
 
