@@ -1,4 +1,4 @@
-.PHONY: buzzer test benchmark cover run
+.PHONY: buzzer test benchmark cover run zip
 
 PWD=$(shell pwd)
 GOPATH=GOPATH=$(PWD)/lib:$(PWD)
@@ -20,6 +20,9 @@ cover:
 
 run:
 	$(GOPATH) go run src/main.go src/client
+
+zip:
+	zip -r buzzer.zip src docs README.md
 
 clean:
 	rm -f cover.out cover.html buzzer

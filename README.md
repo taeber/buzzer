@@ -14,6 +14,7 @@ bidirectional communication with a minimal web client.
 Buzzer was written solely by Taeber Rapczak using the Git ID
 Taeber Rapczak <taeber@rapczak.com>.
 
+
 Quick Start
 -----------
 
@@ -33,6 +34,11 @@ protocol would have to be inferred from the accept() function in ws.go.
     > post Hello there!
     > logout
 
+
+Poster Board
+------------
+
+Please see `docs/Rapczak-Poster.pdf` for my poster.
 
 Design
 ------
