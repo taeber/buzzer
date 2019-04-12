@@ -59,14 +59,14 @@ func StartServer() Server {
 	return server
 }
 
-type concServer struct {
+type channelServer struct {
 	actual                                                            *kernel
 	post, follow, unfollow, messages, tagged, register, login, logout chan request
 	shutdown                                                          chan bool
 }
 
-func newChannelServer(actual *kernel) *concServer {
-	return &concServer{
+func newChannelServer(actual *kernel) *channelServer {
+	return &channelServer{
 		actual:   actual,
 		post:     make(chan request, 100),
 		follow:   make(chan request, 100),
@@ -95,7 +95,7 @@ type request struct {
 // the serial version of the Server. Responses are given asynchronously, using
 // a goroutine, to prevent blocking. This method ensures safe, concurrent
 // access to the underlying data.
-func (server *concServer) process() {
+func (server *channelServer) process() {
 	for {
 		select {
 		case req := <-server.post:
@@ -140,7 +140,7 @@ func respond(req *request, res response) {
 	req.resp <- res
 }
 
-func (server *concServer) Post(username, message string) (MessageID, error) {
+func (server *channelServer) Post(username, message string) (MessageID, error) {
 	resp := make(chan response)
 	server.post <- request{
 		args: [2]string{username, message},
@@ -150,7 +150,7 @@ func (server *concServer) Post(username, message string) (MessageID, error) {
 	return reply.data.(MessageID), reply.error
 }
 
-func (server *concServer) Follow(followee, follower string) error {
+func (server *channelServer) Follow(followee, follower string) error {
 	resp := make(chan response)
 	server.follow <- request{
 		args: [2]string{followee, follower},
@@ -160,7 +160,7 @@ func (server *concServer) Follow(followee, follower string) error {
 	return reply.error
 }
 
-func (server *concServer) Unfollow(followee, follower string) error {
+func (server *channelServer) Unfollow(followee, follower string) error {
 	resp := make(chan response)
 	server.unfollow <- request{
 		args: [2]string{followee, follower},
@@ -170,7 +170,7 @@ func (server *concServer) Unfollow(followee, follower string) error {
 	return reply.error
 }
 
-func (server *concServer) Messages(username string) []Message {
+func (server *channelServer) Messages(username string) []Message {
 	resp := make(chan response)
 	server.messages <- request{
 		args: [2]string{username},
@@ -180,7 +180,7 @@ func (server *concServer) Messages(username string) []Message {
 	return reply.data.([]Message)
 }
 
-func (server *concServer) Tagged(tag string) []Message {
+func (server *channelServer) Tagged(tag string) []Message {
 	resp := make(chan response)
 	server.tagged <- request{
 		args: [2]string{tag},
@@ -190,7 +190,7 @@ func (server *concServer) Tagged(tag string) []Message {
 	return reply.data.([]Message)
 }
 
-func (server *concServer) Register(username, password string) error {
+func (server *channelServer) Register(username, password string) error {
 	resp := make(chan response)
 	server.register <- request{
 		args: [2]string{username, password},
@@ -200,7 +200,7 @@ func (server *concServer) Register(username, password string) error {
 	return reply.error
 }
 
-func (server *concServer) Login(username, password string, client Client) (*User, error) {
+func (server *channelServer) Login(username, password string, client Client) (*User, error) {
 	resp := make(chan response)
 	server.login <- request{
 		args:   [2]string{username, password},
@@ -211,7 +211,7 @@ func (server *concServer) Login(username, password string, client Client) (*User
 	return reply.data.(*User), reply.error
 }
 
-func (server *concServer) Logout(username string, client Client) {
+func (server *channelServer) Logout(username string, client Client) {
 	server.logout <- request{
 		args:   [2]string{username, ""},
 		client: client,
