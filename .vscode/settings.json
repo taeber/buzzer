@@ -1,6 +1,6 @@
 {
     "go.toolsGopath": "${workspaceFolder}/lib",
-    "go.gopath": "${workspaceFolder}",
+    "go.gopath": "${workspaceFolder}/lib:${workspaceFolder}",
     "editor.formatOnSave": true,
     "files.exclude": {
         "**/.classpath": true,
