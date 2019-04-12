@@ -19,6 +19,7 @@ type subscription struct {
 	unfollow           bool
 }
 
+// wsClient represents a client connected to the WebSocket server.
 type wsClient struct {
 	username  chan string // Alternative is to use sync/atomic.Value.
 	socket    *websocket.Conn

@@ -24,6 +24,12 @@ var numActors = flag.Int("actors", 0, "Run with fake actors")
 // make random choices about what to do.
 func main() {
 	srv = buzzer.StartServer()
+	flag.Usage = func() {
+		fmt.Printf("Usage: %s [FLAGS] [WWWROOT]\n", os.Args[0])
+		fmt.Println("  WWWROOT:\tpath to the Web client")
+		fmt.Println("  FLAGS  :\t")
+		flag.PrintDefaults()
+	}
 	flag.Parse()
 
 	if *interactive {

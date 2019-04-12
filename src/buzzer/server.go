@@ -59,6 +59,9 @@ func StartServer() Server {
 	return server
 }
 
+// channelServer implements the Server interface and essentially puts a layer
+// of channels in front of the actual kernel to provide safe, concurrent
+// access.
 type channelServer struct {
 	actual                                                            *kernel
 	post, follow, unfollow, messages, tagged, register, login, logout chan request
